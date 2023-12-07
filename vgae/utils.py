@@ -58,19 +58,33 @@ def contrastive_loss(A_pred, margin=0.20):
     #print(A_pred_list.shape, A_pred_T.shape)
     A_flattened = A_pred.view(A_pred.shape[0],-1)
     #score_matrix = torch.matual(A_flattened, A_flattened.t())
+    # score_matrix = F.cosine_similarity(A_flattened.unsqueeze(1), A_flattened.unsqueeze(0),dim=2)
     score_matrix = F.cosine_similarity(A_flattened.unsqueeze(1), A_flattened.unsqueeze(0),dim=2)
     gold_score = torch.diagonal(score_matrix, offset=0)
     gold_score = torch.unsqueeze(gold_score,-1)
     difference_matrix = gold_score - score_matrix
-    print("difference_matrix", difference_matrix)
+    #print("difference_matrix", difference_matrix)
     loss_matrix = margin - difference_matrix
     loss_matrix = F.relu(loss_matrix)
-    print("loss matrix", loss_matrix)
-    loss_matrix = torch.sum(loss_matrix) / (score_matrix.shape[0]*score_matrix.shape[1])
-    return 0
+    #print("loss matrix", loss_matrix)
+    
+    loss_mask = torch.ones_like(loss_matrix).type(torch.FloatTensor)
+    diag_mask = torch.eye(loss_mask.size(1), dtype=torch.bool)
+    loss_mask[diag_mask] = 0.0
+    #print("Loss mask",loss_mask, torch.sum(loss_mask))
+    #print("loss matrix", loss_matrix)
+    masked_loss_matrix = loss_matrix * loss_mask
+    #print("masked_loss_matrix",masked_loss_matrix)
+    loss_matrix = masked_loss_matrix
+    loss = torch.sum(loss_matrix) / torch.sum(loss_mask)
+    print("Contrastive Loss", loss)
+    #loss_matrix = torch.sum(loss_matrix) / (score_matrix.shape[0]*score_matrix.shape[1])
+    return loss
+
 
 def train_model(args, dl, vgae):
     optimizer = torch.optim.Adam(vgae.parameters(), args.lr)
+    #print("parameters", [param for param in vgae.parameters()])
     # weights for log_lik loss
     adj_t = dl.adj_train
     norm_w = adj_t.shape[0]**2 / float((adj_t.shape[0]**2 - adj_t.sum()) * 2)
@@ -96,10 +110,11 @@ def train_model(args, dl, vgae):
         if not args.gae:
             kl_divergence = 0.5/A_pred.size(0) * (1 + 2*vgae.logstd - vgae.mean**2 - torch.exp(2*vgae.logstd)).sum(1).mean()
             loss -= kl_divergence
-        A_pred = torch.sigmoid(A_pred).detach().cpu()
+        A_pred = torch.sigmoid(A_pred)
         
-        loss += contrastive_loss(A_pred,0.2)
+        loss += 10*contrastive_loss(A_pred,0.15)
         
+        A_pred = A_pred.detach().cpu()
         #roc score computation
         r_best_criterion=0
         best_r=0
