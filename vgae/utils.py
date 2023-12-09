@@ -52,27 +52,61 @@ def get_scores(edges_pos, edges_neg, A_pred, adj_label):
                'adj_recon': adj_rec}
     return results
 
-def contrastive_loss(A_pred, margin=0.20):
+def contrastive_loss_kl(A_pred, device, margin=0.20):
     #directly calculate similarities of adjacency matrix using dor product
     #A_pred_T = A_pred_list.permute(1,2,0) #[20,2708,2708] to [2708,2708,20]
     #print(A_pred_list.shape, A_pred_T.shape)
-    A_flattened = A_pred.view(A_pred.shape[0],-1)
-    #score_matrix = torch.matual(A_flattened, A_flattened.t())
-    # score_matrix = F.cosine_similarity(A_flattened.unsqueeze(1), A_flattened.unsqueeze(0),dim=2)
-    score_matrix = F.cosine_similarity(A_flattened.unsqueeze(1), A_flattened.unsqueeze(0),dim=2)
+    mask = torch.triu(torch.ones_like(A_pred)).bool()
+    A_flattened = torch.masked_select(A_pred,mask).view(A_pred.size(0),-1)
+    kl_divergence = torch.zeros((A_pred.size(0),A_pred.size(0)))
+    for i in range(A_pred.size(0)):
+        for j in range(A_pred.size(0)):
+            prob_dist_i = F.softmax(A_flattened[i], dim = 0)
+            prob_dist_j = F.softmax(A_flattened[j], dim = 0)
+            kl_divergence[i,j] = F.kl_div(torch.log(prob_dist_i), prob_dist_j, reduction="sum")
+    score_matrix = kl_divergence
+    print("score_matrix",score_matrix)
     gold_score = torch.diagonal(score_matrix, offset=0)
     gold_score = torch.unsqueeze(gold_score,-1)
     difference_matrix = gold_score - score_matrix
-    #print("difference_matrix", difference_matrix)
+    print("difference_matrix", difference_matrix)
     loss_matrix = margin - difference_matrix
     loss_matrix = F.relu(loss_matrix)
     #print("loss matrix", loss_matrix)
-    
-    loss_mask = torch.ones_like(loss_matrix).type(torch.FloatTensor)
+    del mask,score_matrix
+    loss_mask = torch.ones_like(loss_matrix).type(torch.FloatTensor).to(device)
     diag_mask = torch.eye(loss_mask.size(1), dtype=torch.bool)
     loss_mask[diag_mask] = 0.0
-    #print("Loss mask",loss_mask, torch.sum(loss_mask))
+    masked_loss_matrix = loss_matrix * loss_mask
+    #print("masked_loss_matrix",masked_loss_matrix)
+    loss_matrix = masked_loss_matrix
+    loss = torch.sum(loss_matrix) / torch.sum(loss_mask)
+    print("Contrastive Loss", loss)
+    #loss_matrix = torch.sum(loss_matrix) / (score_matrix.shape[0]*score_matrix.shape[1])
+    return loss
+
+
+def contrastive_loss(A_pred, device, margin=0.20):
+    #directly calculate similarities of adjacency matrix using dor product
+    #A_pred_T = A_pred_list.permute(1,2,0) #[20,2708,2708] to [2708,2708,20]
+    #print(A_pred_list.shape, A_pred_T.shape)
+    mask = torch.triu(torch.ones_like(A_pred)).bool() #gei upper part of A_pred, to reduce space
+    A_flattened = torch.masked_select(A_pred,mask).view(A_pred.size(0),-1)
+    score_matrix = torch.zeros((A_pred.size(0),A_pred.size(0))).to(device)
+    for i in range(A_pred.size(0)):
+        for j in range(A_pred.size(0)):
+            score_matrix[i,j] = F.cosine_similarity(A_flattened[i],A_flattened[j],dim=0)
+    gold_score = torch.diagonal(score_matrix, offset=0)
+    gold_score = torch.unsqueeze(gold_score,-1)
+    difference_matrix = gold_score - score_matrix
+    print("difference_matrix", difference_matrix)
+    loss_matrix = margin - difference_matrix
+    loss_matrix = F.relu(loss_matrix)
     #print("loss matrix", loss_matrix)
+    del mask,score_matrix
+    loss_mask = torch.ones_like(loss_matrix).type(torch.FloatTensor).to(device)
+    diag_mask = torch.eye(loss_mask.size(1), dtype=torch.bool)
+    loss_mask[diag_mask] = 0.0
     masked_loss_matrix = loss_matrix * loss_mask
     #print("masked_loss_matrix",masked_loss_matrix)
     loss_matrix = masked_loss_matrix
@@ -112,7 +146,7 @@ def train_model(args, dl, vgae):
             loss -= kl_divergence
         A_pred = torch.sigmoid(A_pred)
         
-        loss += 10*contrastive_loss(A_pred,0.15)
+        loss += 10*contrastive_loss(A_pred,args.device, 0.10)
         
         A_pred = A_pred.detach().cpu()
         #roc score computation

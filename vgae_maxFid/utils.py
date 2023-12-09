@@ -17,7 +17,6 @@ def sparse_to_tuple(sparse_mx):
     return coords, values, shape
 
 def get_scores(edges_pos, edges_neg, A_pred, adj_label):
-    # get logists and labels
     preds = A_pred[edges_pos.T]
     preds_neg = A_pred[edges_neg.T]
     logists = np.hstack([preds, preds_neg])
@@ -43,6 +42,7 @@ def get_scores(edges_pos, edges_neg, A_pred, adj_label):
     labels_all = adj_label.to_dense().view(-1).long()
     preds_all = adj_rec.view(-1).long()
     recon_acc = (preds_all == labels_all).sum().float() / labels_all.size(0)
+    print("thresh",thresh)
     results = {'roc': roc_auc,
                'pr': pr_auc,
                'ap': ap_score,
@@ -53,8 +53,78 @@ def get_scores(edges_pos, edges_neg, A_pred, adj_label):
                'adj_recon': adj_rec}
     return results
 
+def contrastive_loss_kl(A_pred, device, margin=0.20):
+    #directly calculate similarities of adjacency matrix using dor product
+    #A_pred_T = A_pred_list.permute(1,2,0) #[20,2708,2708] to [2708,2708,20]
+    #print(A_pred_list.shape, A_pred_T.shape)
+    mask = torch.triu(torch.ones_like(A_pred)).bool()
+    A_flattened = torch.masked_select(A_pred,mask).view(A_pred.size(0),-1)
+    kl_divergence = torch.zeros((A_pred.size(0),A_pred.size(0)))
+    for i in range(A_pred.size(0)):
+        for j in range(A_pred.size(0)):
+            prob_dist_i = F.softmax(A_flattened[i], dim = 0)
+            prob_dist_j = F.softmax(A_flattened[j], dim = 0)
+            kl_divergence[i,j] = F.kl_div(torch.log(prob_dist_i), prob_dist_j, reduction="sum")
+    score_matrix = kl_divergence
+    print("score_matrix",score_matrix)
+    gold_score = torch.diagonal(score_matrix, offset=0)
+    gold_score = torch.unsqueeze(gold_score,-1)
+    difference_matrix = gold_score - score_matrix
+    print("difference_matrix", difference_matrix)
+    loss_matrix = margin - difference_matrix
+    loss_matrix = F.relu(loss_matrix)
+    #print("loss matrix", loss_matrix)
+    del mask,score_matrix
+    loss_mask = torch.ones_like(loss_matrix).type(torch.FloatTensor).to(device)
+    diag_mask = torch.eye(loss_mask.size(1), dtype=torch.bool)
+    loss_mask[diag_mask] = 0.0
+    masked_loss_matrix = loss_matrix * loss_mask
+    #print("masked_loss_matrix",masked_loss_matrix)
+    loss_matrix = masked_loss_matrix
+    loss = torch.sum(loss_matrix) / torch.sum(loss_mask)
+    print("Contrastive Loss", loss)
+    #loss_matrix = torch.sum(loss_matrix) / (score_matrix.shape[0]*score_matrix.shape[1])
+    return loss
+
+
+def contrastive_loss(A_pred, device, adj_label, margin=0.20):
+    #directly calculate similarities of adjacency matrix using dor product
+    #A_pred_T = A_pred_list.permute(1,2,0) #[20,2708,2708] to [2708,2708,20]
+    #print(A_pred_list.shape, A_pred_T.shape)
+    mask = torch.triu(torch.ones_like(A_pred)).bool() #gei upper part of A_pred, to reduce space
+    A_flattened = torch.masked_select(A_pred,mask).view(A_pred.size(0),-1)
+    adj_label_flattened = torch.masked_select(adj_label,torch.triu(torch.ones_like(adj_label)).bool())
+    score_matrix = torch.zeros((A_pred.size(0),A_pred.size(0))).to(device)
+    score_matrix_adj = torch.zeros((A_pred.size(0))).to(device)
+    for i in range(A_pred.size(0)):
+        for j in range(A_pred.size(0)):
+            score_matrix[i,j] = F.cosine_similarity(A_flattened[i],A_flattened[j],dim=0)
+        score_matrix_adj[i]=F.cosine_similarity(A_flattened[i],adj_label_flattened,dim=0)
+    gold_score = torch.diagonal(score_matrix, offset=0)
+    gold_score = torch.unsqueeze(gold_score,-1)
+    difference_matrix = gold_score - score_matrix
+    print("difference_matrix", difference_matrix)
+    loss_matrix = margin - difference_matrix
+    loss_matrix = F.relu(loss_matrix)
+    #print("loss matrix", loss_matrix)
+    del mask,score_matrix
+    loss_mask = torch.ones_like(loss_matrix).type(torch.FloatTensor).to(device)
+    diag_mask = torch.eye(loss_mask.size(1), dtype=torch.bool)
+    loss_mask[diag_mask] = 0.0
+    masked_loss_matrix = loss_matrix * loss_mask
+    #print("masked_loss_matrix",masked_loss_matrix)
+    loss_matrix = masked_loss_matrix
+    loss = torch.sum(loss_matrix) / torch.sum(loss_mask)
+    print("Contrastive Loss", loss)
+    #loss_matrix = torch.sum(loss_matrix) / (score_matrix.shape[0]*score_matrix.shape[1])
+    A_pred_max = A_pred[torch.argmax(score_matrix_adj)]
+    print(A_pred_max.shape)
+    return loss, A_pred_max
+
+
 def train_model(args, dl, vgae):
-    optimizer = torch.optim.Adam(vgae.parameters(), lr=args.lr)
+    optimizer = torch.optim.Adam(vgae.parameters(), args.lr)
+    #print("parameters", [param for param in vgae.parameters()])
     # weights for log_lik loss
     adj_t = dl.adj_train
     norm_w = adj_t.shape[0]**2 / float((adj_t.shape[0]**2 - adj_t.sum()) * 2)
@@ -66,16 +136,28 @@ def train_model(args, dl, vgae):
     best_vali_criterion = 0.0
     best_state_dict = None
     vgae.train()
+    #edgeDetermine.train()
     for epoch in range(args.epochs):
         t = time.time()
         A_pred = vgae(features)
+        #A_determine = edgeDetermine(A_pred)
+        #print("A_pred",A_pred,)
+        #print("adj_label",adj_label) (2708*2708, 有边为1， 无边为0)
         optimizer.zero_grad()
-        loss = log_lik = norm_w*F.binary_cross_entropy_with_logits(A_pred, adj_label, pos_weight=pos_weight)
+        loss=0
+        for i in range (A_pred.shape[0]):
+            loss += norm_w*F.binary_cross_entropy_with_logits(A_pred[i], adj_label, pos_weight=pos_weight)
         if not args.gae:
             kl_divergence = 0.5/A_pred.size(0) * (1 + 2*vgae.logstd - vgae.mean**2 - torch.exp(2*vgae.logstd)).sum(1).mean()
             loss -= kl_divergence
-
-        A_pred = torch.sigmoid(A_pred).detach().cpu()
+        A_pred = torch.sigmoid(A_pred)
+        
+        loss_con, A_pred = contrastive_loss(A_pred,args.device,adj_label, 0.15)
+        loss += loss_con
+        
+        
+        A_pred = A_pred.detach().cpu()
+        #roc score computation
         r = get_scores(dl.val_edges, dl.val_edges_false, A_pred, dl.adj_label)
         print('Epoch{:3}: train_loss: {:.4f} recon_acc: {:.4f} val_roc: {:.4f} val_ap: {:.4f} f1: {:.4f} time: {:.4f}'.format(
             epoch+1, loss.item(), r['acc'], r['roc'], r['ap'], r['f1'], time.time()-t))
