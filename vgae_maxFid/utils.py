@@ -6,7 +6,9 @@ import numpy as np
 import scipy.sparse as sp
 import torch
 import torch.nn.functional as F
-from sklearn.metrics import roc_auc_score, average_precision_score, precision_recall_curve, auc
+from sklearn.metrics import roc_auc_score, average_precision_score, precision_recall_curve, auc, roc_curve
+import matplotlib.pyplot as plt
+
 
 def sparse_to_tuple(sparse_mx):
     if not sp.isspmatrix_coo(sparse_mx):
@@ -16,6 +18,39 @@ def sparse_to_tuple(sparse_mx):
     shape = sparse_mx.shape
     return coords, values, shape
 
+def draw_curve(edges_pos, edges_neg, A_pred, adj_label):
+    preds = A_pred[edges_pos.T]
+    preds_neg = A_pred[edges_neg.T]
+    logists = np.hstack([preds, preds_neg])
+    labels = np.hstack([np.ones(preds.size(0)), np.zeros(preds_neg.size(0))])
+    precisions, recalls, thresholds = precision_recall_curve(labels, logists)
+    pr_auc = auc(recalls, precisions)
+    ###draw pr_curve
+    plt.figure(figsize=(10,6))
+    plt.figure(figsize=(10, 6))
+    plt.plot(recalls, precisions, color='darkorange', lw=2, label='PR curve (area = {:.2f})'.format(pr_auc))
+    plt.xlim([0.0, 1.0])
+    plt.ylim([0.0, 1.05])
+    plt.xlabel('Recall')
+    plt.ylabel('Precision')
+    plt.title('Precision-Recall Curve')
+    plt.legend(loc='upper right')
+    plt.show()
+    plt.savefig("pr_curve.png")
+    
+    fpr, tpr, thresholds = roc_curve(labels, logists)
+    roc_auc = auc(fpr, tpr)
+    plt.figure(figsize=(10, 6))
+    plt.plot(fpr, tpr, color='darkorange', lw=2, label='ROC curve (area = {:.2f})'.format(roc_auc))
+    plt.plot([0, 1], [0, 1], color='navy', lw=2, linestyle='--')
+    plt.xlim([0.0, 1.0])
+    plt.ylim([0.0, 1.05])
+    plt.xlabel('False Positive Rate')
+    plt.ylabel('True Positive Rate')
+    plt.title('Receiver Operating Characteristic (ROC) Curve')
+    plt.legend(loc='lower right')
+    plt.savefig("roc_curve.png")
+    
 def get_scores(edges_pos, edges_neg, A_pred, adj_label):
     preds = A_pred[edges_pos.T]
     preds_neg = A_pred[edges_neg.T]
@@ -24,6 +59,7 @@ def get_scores(edges_pos, edges_neg, A_pred, adj_label):
     # logists = A_pred.view(-1)
     # labels = adj_label.to_dense().view(-1)
     # calc scores
+
     roc_auc = roc_auc_score(labels, logists)
     ap_score = average_precision_score(labels, logists)
     precisions, recalls, thresholds = precision_recall_curve(labels, logists)
@@ -42,7 +78,6 @@ def get_scores(edges_pos, edges_neg, A_pred, adj_label):
     labels_all = adj_label.to_dense().view(-1).long()
     preds_all = adj_rec.view(-1).long()
     recon_acc = (preds_all == labels_all).sum().float() / labels_all.size(0)
-    print("thresh",thresh)
     results = {'roc': roc_auc,
                'pr': pr_auc,
                'ap': ap_score,
@@ -51,6 +86,7 @@ def get_scores(edges_pos, edges_neg, A_pred, adj_label):
                'f1': f1,
                'acc': recon_acc,
                'adj_recon': adj_rec}
+    
     return results
 
 def contrastive_loss_kl(A_pred, device, margin=0.20):
@@ -152,7 +188,7 @@ def train_model(args, dl, vgae):
             loss -= kl_divergence
         A_pred = torch.sigmoid(A_pred)
         
-        loss_con, A_pred = contrastive_loss(A_pred,args.device,adj_label, 0.15)
+        loss_con, A_pred = contrastive_loss(A_pred,args.device,adj_label, 0.08)
         loss += loss_con
         
         
@@ -165,6 +201,7 @@ def train_model(args, dl, vgae):
             best_vali_criterion = r[args.criterion]
             best_state_dict = copy.deepcopy(vgae.state_dict())
             r_test = get_scores(dl.test_edges, dl.test_edges_false, A_pred, dl.adj_label)
+            draw_curve(dl.test_edges, dl.test_edges_false, A_pred, dl.adj_label)
             #r_test = r
             print("          test_roc: {:.4f} test_ap: {:.4f} test_f1: {:.4f} test_recon_acc: {:.4f}".format(
                     r_test['roc'], r_test['ap'], r_test['f1'], r_test['acc']))

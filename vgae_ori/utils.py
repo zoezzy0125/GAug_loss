@@ -6,7 +6,8 @@ import numpy as np
 import scipy.sparse as sp
 import torch
 import torch.nn.functional as F
-from sklearn.metrics import roc_auc_score, average_precision_score, precision_recall_curve, auc
+from sklearn.metrics import roc_auc_score, average_precision_score, precision_recall_curve, auc, roc_curve
+import matplotlib.pyplot as plt
 
 def sparse_to_tuple(sparse_mx):
     if not sp.isspmatrix_coo(sparse_mx):
@@ -16,6 +17,39 @@ def sparse_to_tuple(sparse_mx):
     shape = sparse_mx.shape
     return coords, values, shape
 
+def draw_curve(edges_pos, edges_neg, A_pred, adj_label):
+    preds = A_pred[edges_pos.T]
+    preds_neg = A_pred[edges_neg.T]
+    logists = np.hstack([preds, preds_neg])
+    labels = np.hstack([np.ones(preds.size(0)), np.zeros(preds_neg.size(0))])
+    precisions, recalls, thresholds = precision_recall_curve(labels, logists)
+    pr_auc = auc(recalls, precisions)
+    ###draw pr_curve
+    plt.figure(figsize=(10,6))
+    plt.figure(figsize=(10, 6))
+    plt.plot(recalls, precisions, color='darkorange', lw=2, label='PR curve (area = {:.2f})'.format(pr_auc))
+    plt.xlim([0.0, 1.0])
+    plt.ylim([0.0, 1.05])
+    plt.xlabel('Recall')
+    plt.ylabel('Precision')
+    plt.title('Precision-Recall Curve')
+    plt.legend(loc='upper right')
+    plt.show()
+    plt.savefig("pr_curve.png")
+    
+    fpr, tpr, thresholds = roc_curve(labels, logists)
+    roc_auc = auc(fpr, tpr)
+    plt.figure(figsize=(10, 6))
+    plt.plot(fpr, tpr, color='darkorange', lw=2, label='ROC curve (area = {:.2f})'.format(roc_auc))
+    plt.plot([0, 1], [0, 1], color='navy', lw=2, linestyle='--')
+    plt.xlim([0.0, 1.0])
+    plt.ylim([0.0, 1.05])
+    plt.xlabel('False Positive Rate')
+    plt.ylabel('True Positive Rate')
+    plt.title('Receiver Operating Characteristic (ROC) Curve')
+    plt.legend(loc='lower right')
+    plt.savefig("roc_curve.png")
+    
 def get_scores(edges_pos, edges_neg, A_pred, adj_label):
     # get logists and labels
     preds = A_pred[edges_pos.T]
@@ -36,6 +70,7 @@ def get_scores(edges_pos, edges_neg, A_pred, adj_label):
     pre = precisions[best_comb]
     rec = recalls[best_comb]
     thresh = thresholds[best_comb]
+    print("thresh",thresh)
     # calc reconstracted adj_mat and accuracy with the threshold for best f1
     adj_rec = copy.deepcopy(A_pred)
     adj_rec[adj_rec < thresh] = 0
@@ -83,7 +118,7 @@ def train_model(args, dl, vgae):
             best_vali_criterion = r[args.criterion]
             best_state_dict = copy.deepcopy(vgae.state_dict())
             r_test = get_scores(dl.test_edges, dl.test_edges_false, A_pred, dl.adj_label)
-            #r_test = r
+            draw_curve(dl.test_edges, dl.test_edges_false, A_pred, dl.adj_label)
             print("          test_roc: {:.4f} test_ap: {:.4f} test_f1: {:.4f} test_recon_acc: {:.4f}".format(
                     r_test['roc'], r_test['ap'], r_test['f1'], r_test['acc']))
         loss.backward()

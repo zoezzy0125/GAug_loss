@@ -9,13 +9,14 @@ import torch.nn as nn
 from utils import *
 from models import *
 from dataloader import DataLoader
+#from torch_geometic.dataset import Planetoid
 
 def get_args():
     parser = argparse.ArgumentParser(description='VGAE')
     parser.add_argument('--cuda', type=int, default=-1)
     parser.add_argument('--emb_size', type=int, default=16)
     parser.add_argument('--hidden_size', type=int, default=32)
-    parser.add_argument('--epochs', type=int, default=1200)
+    parser.add_argument('--epochs', type=int, default=1500)
     parser.add_argument('--seed', type=int, default=7)
     parser.add_argument('--gen_graphs', type=int, default=0)
     parser.add_argument('--lr', type=float, default=0.01, help="learning rate")
@@ -32,6 +33,7 @@ def get_args():
     return args
 
 def main(args):
+    
     # config device
     # args.device = torch.device('cuda' if args.cuda else 'cpu')
     args.device = torch.device(f'cuda:{args.cuda}' if args.cuda>=0 else 'cpu')
