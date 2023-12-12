@@ -6,7 +6,7 @@ import numpy as np
 import scipy.sparse as sp
 import torch
 import torch.nn.functional as F
-from sklearn.metrics import roc_auc_score, average_precision_score, precision_recall_curve, auc, roc_curve
+from sklearn.metrics import roc_auc_score, average_precision_score, precision_recall_curve, auc, roc_curve, f1_score
 import matplotlib.pyplot as plt
 
 
@@ -71,7 +71,7 @@ def get_scores(edges_pos, edges_neg, A_pred, adj_label):
     pre = precisions[best_comb]
     rec = recalls[best_comb]
     thresh = thresholds[best_comb]
-    print("thresh",thresh)
+    #print("thresh",thresh)
     # calc reconstracted adj_mat and accuracy with the threshold for best f1
     adj_rec = copy.deepcopy(A_pred)
     adj_rec[adj_rec < thresh] = 0
@@ -102,11 +102,11 @@ def contrastive_loss_kl(A_pred, device, margin=0.20):
             prob_dist_j = F.softmax(A_flattened[j], dim = 0)
             kl_divergence[i,j] = F.kl_div(torch.log(prob_dist_i), prob_dist_j, reduction="sum")
     score_matrix = kl_divergence
-    print("score_matrix",score_matrix)
+    #print("score_matrix",score_matrix)
     gold_score = torch.diagonal(score_matrix, offset=0)
     gold_score = torch.unsqueeze(gold_score,-1)
     difference_matrix = gold_score - score_matrix
-    print("difference_matrix", difference_matrix)
+    #print("difference_matrix", difference_matrix)
     loss_matrix = margin - difference_matrix
     loss_matrix = F.relu(loss_matrix)
     #print("loss matrix", loss_matrix)
@@ -118,7 +118,7 @@ def contrastive_loss_kl(A_pred, device, margin=0.20):
     #print("masked_loss_matrix",masked_loss_matrix)
     loss_matrix = masked_loss_matrix
     loss = torch.sum(loss_matrix) / torch.sum(loss_mask)
-    print("Contrastive Loss", loss)
+    #print("Contrastive Loss", loss)
     #loss_matrix = torch.sum(loss_matrix) / (score_matrix.shape[0]*score_matrix.shape[1])
     return loss
 
@@ -158,7 +158,7 @@ def contrastive_loss(A_pred, device, adj_label, margin=0.20):
     return loss, A_pred_max
 
 
-def train_model(args, dl, vgae):
+def train_model(args, dl, vgae, linear_model = None):
     optimizer = torch.optim.Adam(vgae.parameters(), args.lr)
     #print("parameters", [param for param in vgae.parameters()])
     # weights for log_lik loss
@@ -176,9 +176,6 @@ def train_model(args, dl, vgae):
     for epoch in range(args.epochs):
         t = time.time()
         A_pred = vgae(features)
-        #A_determine = edgeDetermine(A_pred)
-        #print("A_pred",A_pred,)
-        #print("adj_label",adj_label) (2708*2708, 有边为1， 无边为0)
         optimizer.zero_grad()
         loss=0
         for i in range (A_pred.shape[0]):
@@ -188,7 +185,7 @@ def train_model(args, dl, vgae):
             loss -= kl_divergence
         A_pred = torch.sigmoid(A_pred)
         
-        loss_con, A_pred = contrastive_loss(A_pred,args.device,adj_label, 0.08)
+        loss_con, A_pred = contrastive_loss(A_pred,args.device,adj_label, 0.06)
         loss += loss_con
         
         
@@ -212,7 +209,44 @@ def train_model(args, dl, vgae):
             r_test['roc'], r_test['ap'], r_test['f1'], r_test['acc']))
 
     vgae.load_state_dict(best_state_dict)
-    return vgae
+    if linear_model is not None:
+        vgae.eval()
+        embeddings = vgae.encode(features).detach()
+        model = linear_model
+        optimizer = torch.optim.Adam(model.parameters(),lr = args.lr)
+        
+        best_vali_acc = 0.0
+        best_model_state = None
+        for epoch in range (args.nc_epochs):
+            model.train()
+            optimizer.zero_grad()
+            outputs = model(embeddings)
+            best_output=0
+            loss_lm = 0.0 
+            least_loss = float('inf')
+            for output in outputs:
+                loss_ = F.cross_entropy(output[dl.train_nid], dl.labels[dl.train_nid].to(args.device))
+                if loss_<least_loss:
+                    least_loss = loss_
+                    best_output = output
+                loss_lm  += loss_
+            output = best_output
+            model.eval()
+            output = output.detach().cpu()
+            output = torch.argmax(output, dim=1)
+            vali_acc = f1_score(output[dl.val_nid], dl.labels[dl.val_nid].cpu(), average = 'micro')
+            print('Epoch [{:2}/{}]: loss: {:.4f}, vali acc: {:.4f}'.format(epoch+1, args.nc_epochs, loss_lm.item(), vali_acc))
+            if vali_acc > best_vali_acc:
+                best_vali_acc = vali_acc
+                best_model_state = copy.deepcopy(linear_model.state_dict())
+                test_acc = f1_score(output[dl.test_nid], dl.labels[dl.test_nid].cpu(), average='micro')
+                print('Test acc : {:.4f} '.format(test_acc))
+            loss_lm.backward()
+            optimizer.step()
+    print("Done! final results: test acc : {:.4f}".format(
+            test_acc))
+    
+    return vgae, linear_model
 
 def gen_graphs(args, dl, vgae):
     adj_orig = dl.adj_orig

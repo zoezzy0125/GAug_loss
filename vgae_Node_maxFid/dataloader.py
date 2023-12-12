@@ -57,6 +57,12 @@ class DataLoader():
     def load_data(self, dataset):
         # load the data: x, tx, allx, graph
         names = ['x', 'tx', 'allx', 'graph']
+        '''
+        - x, the feature vectors of the labeled training instances,
+        - y, the one-hot labels of the labeled training instances,
+        - allx, the feature vectors of both labeled and unlabeled training instances (a superset of x),
+        - graph, a dict in the format {index: [index_of_neighbor_nodes]}.
+        '''
         objects = []
         for n in names:
             with open(f'{BASE_DIR}/data/citation_networks/ind.{dataset}.{n}', 'rb') as f:
@@ -85,6 +91,21 @@ class DataLoader():
             adj = sp.csr_matrix(adj)
         self.adj_orig = adj
         self.features_orig = normalize(features, norm='l1', axis=1)
+        
+        tvt_nids = pickle.load(open(f'{BASE_DIR}/data/graphs/{dataset}_tvt_nids.pkl', 'rb'))
+        labels = pickle.load(open(f'{BASE_DIR}/data/graphs/{dataset}_labels.pkl', 'rb'))
+        if len(labels.shape) == 2:
+            labels = torch.FloatTensor(labels)
+        else:
+            labels = torch.LongTensor(labels)
+        self.labels = labels
+        self.train_nid = tvt_nids[0]
+        self.val_nid = tvt_nids[1]
+        self.test_nid = tvt_nids[2]
+        if len(self.labels.size()) == 1:
+            self.num_class = len(torch.unique(self.labels))
+        else:
+            self.num_class = self.labels.size(1)
 
     def load_data_binary(self, dataset):
         adj = pickle.load(open(f'{BASE_DIR}/graphs/{dataset}_adj.pkl', 'rb'))
@@ -192,7 +213,7 @@ class DataLoader():
         rowsum = np.array(adj_.sum(1))
         degree_mat_inv_sqrt = sp.diags(np.power(rowsum, -0.5).flatten())
         self.adj_norm = adj_.dot(degree_mat_inv_sqrt).transpose().dot(degree_mat_inv_sqrt).tocoo()
-        
+
     def to_pyt_sp(self):
         adj_norm_tuple = sparse_to_tuple(self.adj_norm)
         adj_label_tuple = sparse_to_tuple(self.adj_label)
@@ -206,3 +227,4 @@ class DataLoader():
         self.features = torch.sparse.FloatTensor(torch.LongTensor(features_tuple[0].T),
                                                 torch.FloatTensor(features_tuple[1]),
                                                 torch.Size(features_tuple[2]))
+

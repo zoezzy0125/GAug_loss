@@ -85,6 +85,21 @@ class DataLoader():
             adj = sp.csr_matrix(adj)
         self.adj_orig = adj
         self.features_orig = normalize(features, norm='l1', axis=1)
+        
+        tvt_nids = pickle.load(open(f'{BASE_DIR}/data/graphs/{dataset}_tvt_nids.pkl', 'rb'))
+        labels = pickle.load(open(f'{BASE_DIR}/data/graphs/{dataset}_labels.pkl', 'rb'))
+        if len(labels.shape) == 2:
+            labels = torch.FloatTensor(labels)
+        else:
+            labels = torch.LongTensor(labels)
+        self.labels = labels
+        self.train_nid = tvt_nids[0]
+        self.val_nid = tvt_nids[1]
+        self.test_nid = tvt_nids[2]
+        if len(self.labels.size()) == 1:
+            self.num_class = len(torch.unique(self.labels))
+        else:
+            self.num_class = self.labels.size(1)
 
     def load_data_binary(self, dataset):
         adj = pickle.load(open(f'{BASE_DIR}/graphs/{dataset}_adj.pkl', 'rb'))

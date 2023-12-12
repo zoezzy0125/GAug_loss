@@ -4,14 +4,14 @@ import torch.nn.functional as F
 import numpy as np
 
 class VGAE(nn.Module):
-    def __init__(self, adj, dim_in, dim_h, dim_z, gae):
+    def __init__(self, adj, dim_in, dim_h, dim_z, num_classes, gae):
         super(VGAE,self).__init__()
         self.dim_z = dim_z
         self.gae = gae
         self.base_gcn = GraphConvSparse(dim_in, dim_h, adj)
         self.gcn_mean = GraphConvSparse(dim_h, dim_z, adj, activation=False)
         self.gcn_logstd = GraphConvSparse(dim_h, dim_z, adj, activation=False)
-
+        self.fc_output = nn.Linear(dim_z, num_classes)
     def encode(self, X):
         hidden = self.base_gcn(X)
         self.mean = self.gcn_mean(hidden)
@@ -25,14 +25,10 @@ class VGAE(nn.Module):
             sampled_z = gaussian_noise*torch.exp(self.logstd) + self.mean
             return sampled_z
 
-    def decode(self, Z):
-        A_pred = Z @ Z.T
-        return A_pred
-
     def forward(self, X):
         Z = self.encode(X)
-        A_pred = self.decode(Z)
-        return A_pred
+        output = self.fc_output(Z)
+        return output
 
 class GraphConvSparse(nn.Module):
     def __init__(self, input_dim, output_dim, adj, activation=True):
@@ -48,7 +44,6 @@ class GraphConvSparse(nn.Module):
 
     def forward(self, inputs):
         x = inputs @ self.weight
-        #print("1",x, self.adj)
         x = self.adj @ x
         if self.activation:
             return F.elu(x)

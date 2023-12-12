@@ -24,7 +24,7 @@ def get_args():
     parser.add_argument('--cuda', type=int, default=-1)
     parser.add_argument('--emb_size', type=int, default=16)
     parser.add_argument('--hidden_size', type=int, default=32)
-    parser.add_argument('--epochs', type=int, default=1200)
+    parser.add_argument('--epochs', type=int, default=1300)
     parser.add_argument('--seed', type=int, default=7)
     parser.add_argument('--gen_graphs', type=int, default=0)
     parser.add_argument('--lr', type=float, default=0.01, help="learning rate")
@@ -37,6 +37,7 @@ def get_args():
     # # tmp args for debuging
     parser.add_argument("--w_r", type=float, default=1)
     parser.add_argument("--w_kl", type=float, default=1)
+    parser.add_argument("--nc_epochs", type=int, default=300)
     args = parser.parse_args()
     return args
 
@@ -57,8 +58,11 @@ def main(args):
 
     vgae = VGAE(dl.adj_norm.to(args.device), dl.features.size(1), args.hidden_size, args.emb_size, args.gae)
     vgae.to(args.device)
-    vgae = train_model(args, dl, vgae)
-
+    linear_model = MyLinear(args.emb_size, dl.num_class).to(args.device)
+    #edgeDetermine = EdgeConvolutionModel(input_size = [dl.featuers.size(1),dl.features.size(1)])
+    vgae, linear_model = train_model(args, dl, vgae, linear_model)
+   
+    
 
 if __name__ == "__main__":
     args = get_args()

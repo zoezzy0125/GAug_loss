@@ -202,7 +202,6 @@ class GCN(object):
             self.params_add = params["add_pct"]
             self.A_pred = A_pred
 
-
     def load_data(self, adj, adj_eval, features, labels, tvt_nids):
         if isinstance(features, torch.FloatTensor):
             self.features = features
@@ -383,7 +382,7 @@ class GCN(object):
                     self.constractive_adj()
             self.model_gcn.train()
             logits = self.model_gcn(self.G, features)
-            #print("logits",logits)
+            #print("logits",logits, logits.shape, logits[0].shape) #2708,7; 7
             l = nc_criterion(logits[self.train_nid], labels[self.train_nid])
             #print("l",l)
             if l.grad_fn:
@@ -414,11 +413,12 @@ class GCN(object):
         return best_test_acc, best_vali_acc, best_logits
 
     def eval_node_cls(self, logits, labels):
-
+        print("labels",labels,len(labels.size()))
         if len(labels.size()) == 2:
             preds = torch.round(torch.sigmoid(logits))
         else:
             preds = torch.argmax(logits, dim=1)
+            print("preds",preds)
         micro_f1 = f1_score(labels, preds, average='micro')
         return micro_f1, 1
     

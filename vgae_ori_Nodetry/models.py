@@ -54,3 +54,17 @@ class GraphConvSparse(nn.Module):
             return F.elu(x)
         else:
             return x
+        
+
+class MyLinear(nn.Module):
+
+    def __init__(self, embed_size, num_classes):
+        super(MyLinear, self).__init__()
+        self.linear1 = nn.Linear(embed_size, embed_size)
+        self.linear2 = nn.Linear(embed_size, num_classes)
+
+    def forward(self, x):
+        x = self.linear1(x)
+        x = self.linear2(x)
+        return F.log_softmax(x, dim=1)
+    

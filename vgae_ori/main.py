@@ -47,7 +47,7 @@ def main(args):
     dl = DataLoader(args)
 
     if args.gae: args.w_kl = 0
-
+    print("adj_norm",dl.adj_norm.to(args.device))
     vgae = VGAE(dl.adj_norm.to(args.device), dl.features.size(1), args.hidden_size, args.emb_size, args.gae)
     vgae.to(args.device)
     vgae = train_model(args, dl, vgae)
