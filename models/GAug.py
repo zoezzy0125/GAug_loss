@@ -513,51 +513,44 @@ class GAug_model(nn.Module):
 
     def sample_diversity_enhanced(self, adj_logits, average_adj, fid_frac):
         #edge_probs = adj_logits / torch.max(adj_logits)
-        mask = (average_adj!=0)
         channel_noise = Variable(torch.randn_like(adj_logits), requires_grad=True).to(self.device)
-        channel_noise_bias = Variable(torch.zeros_like(adj_logits[mask]).data.normal_(0,1), requires_grad = True).to(self.device)
+        channel_noise_bias = Variable(torch.zeros_like(adj_logits).data.normal_(0,1), requires_grad = True).to(self.device)
         #print("adj_logits", adj_logits, adj_logits.shape)
-        adj_logits_gau = adj_logits * (1+0.1*channel_noise) + 0.1*channel_noise_bias
+        adj_logits_gau = adj_logits * ( 1 + channel_noise ) + channel_noise_bias
         #print("adj_logits_gau", adj_logits_gau, adj_logits_gau.shape)
         #adj_logits_gau_tmp = torch.sigmoid(adj_logits_gau_tmp) #sigmoid to 0~1 in order to sampling
         adj_logits_gau = adj_logits_gau.triu(1).view(-1)
         adj_average = average_adj.triu(1).view(-1)
-        mask = (adj_average!=0)
-        print("mask",mask)
-        adj_average_nonzero = adj_average[mask]
-        print("adj_average_nonzero", adj_average_nonzero, adj_average_nonzero.shape)
-        adj_logits_gau_nonzero = adj_logits_gau[mask]
-        print("adj_logits_gau_nonzero", adj_logits_gau_nonzero, adj_logits_gau_nonzero.shape)
-        kl_divergence_nonzero = F.kl_div(torch.log(adj_logits_gau_nonzero), adj_average_nonzero, reduction="sum")
-        adj_average_zero = adj_average[~mask]
-        adj_logits_gau_zero = adj_logits_gau[~mask]
-        kl_divergence_zero = F.kl_div(torch.log(adj_logits_gau_zero), adj_average_zero, reduction="sum")
-        score= kl_divergence_nonzero - kl_divergence_zero
-        (channel_noise_grad, channel_noise_bias_grad) = torch.autograd.grad(score, [channel_noise, channel_noise_bias])
+        kl_divergence = F.kl_div(torch.log(adj_logits_gau), adj_average, reduction="sum")
+        (channel_noise_grad, channel_noise_bias_grad) = torch.autograd.grad(kl_divergence, [channel_noise, channel_noise_bias])
 
         channel_noise.data.add_(0.1 * torch.sign(channel_noise_grad))
         channel_noise_bias.data.add_(0.1 * torch.sign(channel_noise_bias_grad))
-        del channel_noise_grad, channel_noise_bias_grad, kl_divergence_nonzero, kl_divergence_zero
-        # zero_indices = torch.nonzero(average_adj==0)
-        # print("channel_noise", channel_noise, torch.max(channel_noise))
-        # channel_noise[zero_indices[:,0], zero_indices[:,1]]=0
-        # print("channel_noise", channel_noise, torch.max(channel_noise))
-        # channel_noise_bias[zero_indices[:,0],zero_indices[:,1]]=0
+        del channel_noise_grad, channel_noise_bias_grad, kl_divergence
+
         adj_logits_ori = adj_logits
-        adj_logits_gau = adj_logits*( 1 + 0.1*channel_noise ) + 0.1*channel_noise_bias
+        mask = (average_adj!=0)
+        expanded_mask = mask.expand_as(adj_logits)
+        #print(expanded_mask,expanded_mask.shape)
+        channel_noise_masked = channel_noise * expanded_mask.float()
+        #print("channel_noise_masked", channel_noise_masked)
+        channel_noise_bias_masked = channel_noise_bias * expanded_mask.float()
+        adj_logits_gau = adj_logits*( 1 + 0.01*channel_noise_masked) + 0.01*channel_noise_bias_masked
         #adj_logits_gau[zero_indices[:,0],zero_indices[:,1]]=0
 
-        linfball_proj(adj_logits_ori, 0.1, adj_logits_gau, in_place=True)
+        linfball_proj(adj_logits_ori, 0.05, adj_logits_gau, in_place=True)
         #print("gau",adj_logits_gau)
-        adj_logits = torch.sigmoid(adj_logits_gau)
+        #adj_logits = adj_logits_gau
+        adj_logits_gau = torch.clamp(adj_logits_gau, min=0)
+        adj_logits = torch.where(adj_logits_gau!=0, torch.sigmoid(adj_logits_gau), adj_logits_gau)
         #print("logits ori", adj_logits_ori)
         #adj_logits[zero_indices[:,0],zero_indices[:,1]]=0
-        #print("logits", adj_logits)
+        print("logits", adj_logits, len(torch.nonzero(adj_logits)))
         return self.sample_adj_add_bernoulli_weight(adj_logits, fid_frac)
         
     def sample_adj_add_bernoulli_weight(self, adj_logits, fid_fac):
         edge_probs = adj_logits / torch.max(adj_logits)
-        print("edge probs in weight",edge_probs)
+        #print("edge probs in weight",edge_probs, torch.max(edge_probs), torch.min(edge_probs))
         adj_sampled = pyro.distributions.RelaxedBernoulliStraightThrough(temperature=self.temperature, probs=edge_probs).rsample()
         print("before", adj_sampled, len(torch.nonzero(adj_sampled)))
         # Adj_weight = pickle.load(open(f'cora_deg_weight.pkl', 'rb'))
