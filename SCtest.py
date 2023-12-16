@@ -198,7 +198,7 @@ if __name__ == "__main__":
     
     generate_indexes = generate_various_graph_1(adj_orig, A_pred, 100, 100, 5)
     for adj_generate in (generate_indexes):
-        adj_generate=randomDropEdge(adj_orig,0.4)
+        adj_generate=randomDropEdge(adj_orig, 0.4)
         lap_norm_generate = normalized_laplacian(adj_generate, num_nodes)
         LED_generate, _ = calculate_laplacian_energy_distribution(features, lap_norm_generate)
         print("cos sim", cosine_similarity_matrix(LED_ori, LED_generate))

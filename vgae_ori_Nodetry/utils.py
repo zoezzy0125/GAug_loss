@@ -109,8 +109,14 @@ def train_model(args, dl, vgae, linear_model=None):
         if not args.gae:
             kl_divergence = 0.5/A_pred.size(0) * (1 + 2*vgae.logstd - vgae.mean**2 - torch.exp(2*vgae.logstd)).sum(1).mean()
             loss -= kl_divergence
-
+        
+        channel_noise = torch.rand_like(A_pred, requires_grad=True).to(args.device)
+        channel_noise_bias = torch.zeros_like(A_pred, requires_grad=True).data.normal_(0,1).to(args.device)
+        A_pred_gaussian = A_pred * (1+channel_noise) + channel_noise_bias
+        A_pred_gaussian = torch.sigmoid(A_pred_gaussian).detach().cpu()
         A_pred = torch.sigmoid(A_pred).detach().cpu()
+        print(A_pred, "AA", A_pred.fill_diagonal_(0))
+        print("gaussian",A_pred_gaussian)
         r = get_scores(dl.val_edges, dl.val_edges_false, A_pred, dl.adj_label)
         print('Epoch{:3}: train_loss: {:.4f} recon_acc: {:.4f} val_roc: {:.4f} val_ap: {:.4f} f1: {:.4f} time: {:.4f}'.format(
             epoch+1, loss.item(), r['acc'], r['roc'], r['ap'], r['f1'], time.time()-t))

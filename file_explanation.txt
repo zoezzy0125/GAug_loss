@@ -1,0 +1,7 @@
+1. SCtest.py
+    测试adj变化指标，包含kl，led等计算
+
+2. train_GAugO_weight.py
+    进行高斯优化扰动的测试
+    Todo：
+        加入weight后边作为fidelity保证

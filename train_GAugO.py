@@ -27,6 +27,9 @@ if __name__ == "__main__":
     if sp.issparse(features):
         features = torch.FloatTensor(features.toarray())
 
+    
+    # Adj_weight = pickle.load(open(f'{args.dataset}_deg_weight.pkl', 'rb'))
+    # print("Adj_weight",Adj_weight)
     params_all = json.load(open('best_parameters.json', 'r'))
     params = params_all['GAugO'][args.dataset][args.gnn]
 
@@ -47,7 +50,7 @@ if __name__ == "__main__":
         n_layers = 3
 
     accs = []
-    for _ in range(30):
+    for _ in range(1):
         model = GAug(adj_orig, features, labels, tvt_nids, cuda=gpu, gae=True, alpha=params['alpha'], beta=params['beta'], temperature=params['temp'], warmup=0, gnnlayer_type=gnn, jknet=jk, lr=lr, n_layers=n_layers, log=False, feat_norm=feat_norm)
         acc = model.fit(pretrain_ep=params['pretrain_ep'], pretrain_nc=params['pretrain_nc'])
         accs.append(acc)

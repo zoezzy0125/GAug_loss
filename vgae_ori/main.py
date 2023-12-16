@@ -16,9 +16,9 @@ def get_args():
     parser.add_argument('--cuda', type=int, default=-1)
     parser.add_argument('--emb_size', type=int, default=16)
     parser.add_argument('--hidden_size', type=int, default=32)
-    parser.add_argument('--epochs', type=int, default=1500)
+    parser.add_argument('--epochs', type=int, default=10)
     parser.add_argument('--seed', type=int, default=7)
-    parser.add_argument('--gen_graphs', type=int, default=0)
+    parser.add_argument('--gen_graphs', type=int, default=1)
     parser.add_argument('--lr', type=float, default=0.01, help="learning rate")
     parser.add_argument('--val_frac', type=float, default=0.05)
     parser.add_argument('--test_frac', type=float, default=0.1)
@@ -47,11 +47,11 @@ def main(args):
     dl = DataLoader(args)
 
     if args.gae: args.w_kl = 0
-    print("adj_norm",dl.adj_norm.to(args.device))
+    #print("adj_norm",dl.adj_norm.to(args.device))
     vgae = VGAE(dl.adj_norm.to(args.device), dl.features.size(1), args.hidden_size, args.emb_size, args.gae)
     vgae.to(args.device)
-    vgae = train_model(args, dl, vgae)
-
+    vgae, thresh = train_model(args, dl, vgae)
+    #print("thresh is ",thresh)
     if args.gen_graphs > 0:
         gen_graphs(args, dl, vgae)
 

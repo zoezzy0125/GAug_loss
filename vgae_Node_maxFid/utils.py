@@ -151,7 +151,7 @@ def contrastive_loss(A_pred, device, adj_label, margin=0.20):
     #print("masked_loss_matrix",masked_loss_matrix)
     loss_matrix = masked_loss_matrix
     loss = torch.sum(loss_matrix) / torch.sum(loss_mask)
-    #print("Contrastive Loss", loss)
+    print("Contrastive Loss", loss)
     #loss_matrix = torch.sum(loss_matrix) / (score_matrix.shape[0]*score_matrix.shape[1])
     A_pred_max = A_pred[torch.argmax(score_matrix_adj)]
     #print(A_pred_max.shape)
@@ -185,7 +185,7 @@ def train_model(args, dl, vgae, linear_model = None):
             loss -= kl_divergence
         A_pred = torch.sigmoid(A_pred)
         
-        loss_con, A_pred = contrastive_loss(A_pred,args.device,adj_label, 0.06)
+        loss_con, A_pred = contrastive_loss(A_pred,args.device,adj_label, 0.05)
         loss += loss_con
         
         
