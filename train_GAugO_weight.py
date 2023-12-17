@@ -19,11 +19,11 @@ if __name__ == "__main__":
     else:
         os.environ['CUDA_VISIBLE_DEVICES'] = args.gpu
         gpu = 0
-
-    tvt_nids = pickle.load(open(f'data/graphs/{args.dataset}_tvt_nids.pkl', 'rb'))
-    adj_orig = pickle.load(open(f'data/graphs/{args.dataset}_adj.pkl', 'rb'))
-    features = pickle.load(open(f'data/graphs/{args.dataset}_features.pkl', 'rb'))
-    labels = pickle.load(open(f'data/graphs/{args.dataset}_labels.pkl', 'rb'))
+    
+    tvt_nids = pickle.load(open(f'/home/zzy/GAug/data/graphs/{args.dataset}_tvt_nids.pkl', 'rb'))
+    adj_orig = pickle.load(open(f'/home/zzy/GAug/data/graphs/{args.dataset}_adj.pkl', 'rb'))
+    features = pickle.load(open(f'/home/zzy/GAug/data/graphs/{args.dataset}_features.pkl', 'rb'))
+    labels = pickle.load(open(f'/home/zzy/GAug/data/graphs/{args.dataset}_labels.pkl', 'rb'))
     if sp.issparse(features):
         features = torch.FloatTensor(features.toarray())
 
@@ -33,7 +33,7 @@ if __name__ == "__main__":
     #sorted_values, indices = torch.sort(Adj_weight.flatten(), descending=True)
     #print(sorted_values, indices)
     #print(indices//Adj_weight.size(1), indices%Adj_weight.size(1))
-    params_all = json.load(open('best_parameters.json', 'r'))
+    params_all = json.load(open('/home/zzy/GAug/best_parameters.json', 'r'))
     params = params_all['GAugO'][args.dataset][args.gnn]
 
     gnn = args.gnn
