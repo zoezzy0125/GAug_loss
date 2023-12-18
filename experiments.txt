@@ -6,14 +6,18 @@
 
     Ours:
         - Micro F1: 0.836400, std: 0.004672 frac:0   (best test acc)
+        - Micro F1: 0.836100, std: 0.005192 frac:0 max 0.844000, min 0.827000
         - Micro F1: 0.832900, std: 0.006745 frac:0.1 (with best val to get corresponding acc)
         - Micro F1: 0.836300, std: 0.004569 frac:0.1 (directly save best test acc)
         - Micro F1: 0.836300, std: 0.005938 frac:0.1 (same as above)
+        - Micro F1: 0.834367, std: 0.005067 frac:0.2 max：0.85000, min:0.827000
+        - Micro F1: 0.837967, std: 0.004385 frac:0.2 max 0.845000, min 0.825000
         - Micro F1: 0.836400, std: 0.003938 frac:0.3 
         - Micro F1: 0.836933, std: 0.005921 frac:0.3
         - Micro F1: 0.836100, std: 0.003467 frac:0.3
         - Micro F1: 0.836933, std: 0.003974 frac:0.3 
-        - Micro F1: 0.838133, std: 0.004440, max: 0.85000, min: 0.830000 frac 0.3
+        - Micro F1: 0.838133, std: 0.004440 frac 0.3 max: 0.85000, min: 0.830000 
+    
 
 - Citeseer:
     Original: 
