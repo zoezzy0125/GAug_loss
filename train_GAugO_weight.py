@@ -16,7 +16,7 @@ if __name__ == "__main__":
     parser.add_argument('--save_index', type=str, default='test_acc') 
     args = parser.parse_args()
 
-    torch.cuda.device_count()
+    
     if args.gpu == '-1':
         gpu = -1
     else:
@@ -62,5 +62,5 @@ if __name__ == "__main__":
         print("Big Epoch {}/{}". format(big_epoch, total_big_epoch))
         acc = model.fit(pretrain_ep=params['pretrain_ep'], pretrain_nc=params['pretrain_nc'], save_index = args.save_index)
         accs.append(acc)
-    print(f'Micro F1: {np.mean(accs):.6f}, std: {np.std(accs):.6f}')
+    print(f'Micro F1: {np.mean(accs):.6f}, std: {np.std(accs):.6f}, Max is {np.max(accs):.6f}, min is {np.min(accs):.6f}')
     print("dataset is {} fid_frac is {}".format(args.dataset, args.fidF))

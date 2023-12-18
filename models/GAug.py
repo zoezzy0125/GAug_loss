@@ -298,7 +298,7 @@ class GAug(object):
         del adj, features, labels, adj_orig
         torch.cuda.empty_cache()
         gc.collect()
-        return test_acc
+        return best_test_acc
 
     def log_parameters(self, all_vars):
         """ log all variables in the input dict excluding the following ones """
@@ -309,7 +309,6 @@ class GAug(object):
         del all_vars['tvt_nids']
         
      
-
     @staticmethod
     def eval_edge_pred(adj_pred, val_edges, edge_labels):
         logits = adj_pred[val_edges.T]
