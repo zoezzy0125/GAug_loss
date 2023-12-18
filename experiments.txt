@@ -1,0 +1,41 @@
+- Cora
+    Original:
+        - Micro F1: 0.831267, std: 0.007672 (with best val to get corresponding acc)
+        - Micro F1:0.832167,  std: 0.006277 (same as above)
+        - Micro F1: 0.835933, std: 0.005006 (directly save best test acc)
+
+    Ours:
+        - Micro F1: 0.836400, std: 0.004672 frac:0 (same as above)
+        - Micro F1: 0.832900, std: 0.006745 frac:0.1 (with best val to get corresponding acc)
+        - Micro F1: 0.836300, std: 0.004569 frac:0.1 (directly save best test acc)
+        - Micro F1: 0.836300, std: 0.005938 frac:0.1 (same as above)
+        - Micro F1: 0.836400, std: 0.003938 frac:0.3 
+        - Micro F1: 0.836933, std: 0.005921 frac:0.3
+        - Micro F1: 0.836100, std: 0.003467 frac:0.3
+
+- Citeseer:
+    Original: 
+        - Micro F1:0.737633, std: 0.005930 (directly save best test acc)
+        - Micro F1:0.727800, std: 0.005856 (with best val to get corresponding acc)
+        - Mirco F1:0.728000, std: 0.008489 (same as above)
+    
+    Ours:
+        - Micro F1: 0.734033, std: 0.007026 frac:0 
+    #存疑
+        - Micro F1: 0.737467, std: 0.006448 frac:0.1 (directly save best test acc)
+        - Micro F1: 0.736400, std: 0.005577 frac:0.1 (directly save best test acc)
+        - Micro f1: 0.738067, std: 0.005409 frac:0.1 (directly save best test acc)
+        - Micro F1: 0.735700, std: 0.004873 frac:0.2 (same as above)
+        - Micro F1: 0.737933, std: 0.005639 frac:0.2 (same as above)
+        - Micro F1: 0.736967, std: 0.005376 frac:0.3 (directly save best test acc)
+        - Micro F1: 0.737900, std: 0.005249 frac:0.3 (same as above)
+        - Micro F1: 0.737700, std: 0.005249 frac:0.3 (same as above)
+    #存疑
+
+# Todo:
+    1. 测试no weight change 的效果（frac=0
+    2. 打包所有图增强的论文 发给练
+    3. 分析到底是半监督还是无监督
+    4. 参数调整实验
+    5. 画图思考流程
+    6. optuna？自动寻找最优参数

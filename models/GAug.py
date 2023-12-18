@@ -13,7 +13,7 @@ from torch.autograd import Variable
 from .utils import *
 
 class GAug(object):
-    def __init__(self, adj_matrix, features, labels, tvt_nids, cuda=-1, hidden_size=128, emb_size=32, n_layers=1, epochs=200, seed=-1, lr=1e-2, weight_decay=5e-4, dropout=0.5, gae=False, beta=0.5, temperature=0.2, log=True, name='debug', warmup=3, gnnlayer_type='gcn', jknet=False, alpha=1, sample_type='add_sample', feat_norm='row'):
+    def __init__(self, adj_matrix, features, labels, tvt_nids, cuda=-1, hidden_size=128, emb_size=32, n_layers=1, epochs=200, seed=-1, lr=1e-2, weight_decay=5e-4, dropout=0.5, gae=False, beta=0.5, temperature=0.2, log=True, name='debug', warmup=3, gnnlayer_type='gcn', jknet=False, alpha=1, sample_type='add_sample', edge_weights=None, fid_frac=0, feat_norm='row'):
         self.lr = lr
         self.weight_decay = weight_decay
         self.n_epochs = epochs
@@ -21,13 +21,6 @@ class GAug(object):
         self.beta = beta
         self.warmup = warmup
         self.feat_norm = feat_norm
-        # create a logger, logs are saved to GAug-[name].log when name is not None
-        if log:
-            self.logger = self.get_logger(name)
-        else:
-            # disable logger if wanted
-            # logging.disable(logging.CRITICAL)
-            self.logger = logging.getLogger()
         # config device (force device to cpu when cuda is not available)
         if not torch.cuda.is_available():
             cuda = -1
@@ -56,7 +49,9 @@ class GAug(object):
                                 gae=gae,
                                 jknet=jknet,
                                 alpha=alpha,
-                                sample_type=sample_type)
+                                sample_type=sample_type,
+                                edge_weights=edge_weights,
+                                fid_frac=fid_frac)
 
     def load_data(self, adj_matrix, features, labels, tvt_nids, gnnlayer_type):
         """ preprocess data """
@@ -164,8 +159,7 @@ class GAug(object):
             ep_auc, ep_ap = self.eval_edge_pred(adj_pred, self.val_edges, self.edge_labels)
             print('EPNet pretrain, Epoch [{:3}/{}]: loss {:.4f}, auc {:.4f}, ap {:.4f}'
                         .format(epoch+1, n_epochs, loss.item(), ep_auc, ep_ap))
-            self.logger.info('EPNet pretrain, Epoch [{:3}/{}]: loss {:.4f}, auc {:.4f}, ap {:.4f}'
-                        .format(epoch+1, n_epochs, loss.item(), ep_auc, ep_ap))
+          
 
     def pretrain_nc_net(self, model, adj, features, labels, n_epochs):
         """ pretrain the node classification network """
@@ -195,17 +189,13 @@ class GAug(object):
                 test_acc = self.eval_node_cls(nc_logits_eval[self.test_nid], labels[self.test_nid])
                 print('NCNet pretrain, Epoch [{:2}/{}]: loss {:.4f}, val acc {:.4f}, test acc {:.4f}'
                             .format(epoch+1, n_epochs, loss.item(), val_acc, test_acc))
-                self.logger.info('NCNet pretrain, Epoch [{:2}/{}]: loss {:.4f}, val acc {:.4f}, test acc {:.4f}'
-                            .format(epoch+1, n_epochs, loss.item(), val_acc, test_acc))
+               
             else:
                 print('NCNet pretrain, Epoch [{:2}/{}]: loss {:.4f}, val acc {:.4f}'
                             .format(epoch+1, n_epochs, loss.item(), val_acc))
-                self.logger.info('NCNet pretrain, Epoch [{:2}/{}]: loss {:.4f}, val acc {:.4f}'
-                            .format(epoch+1, n_epochs, loss.item(), val_acc))
-
-    def fit(self, pretrain_ep=200, pretrain_nc=20):
+               
+    def fit(self, pretrain_ep=200, pretrain_nc=20, save_index = "test_acc"):
         """ train the model """
-        # move data to device
         adj_norm = self.adj_norm.to(self.device)
         adj = self.adj.to(self.device)
         features = self.features.to(self.device)
@@ -238,6 +228,7 @@ class GAug(object):
             nc_criterion = nn.CrossEntropyLoss()
         # keep record of the best validation accuracy for early stopping
         best_val_acc = 0.
+        best_test_acc = 0.
         patience_step = 0
         # train model
         for epoch in range(self.n_epochs):
@@ -265,34 +256,44 @@ class GAug(object):
             val_acc = self.eval_node_cls(nc_logits_eval[self.val_nid], labels[self.val_nid])
             adj_pred = torch.sigmoid(adj_logits.detach()).cpu()
             ep_auc, ep_ap = self.eval_edge_pred(adj_pred, self.val_edges, self.edge_labels)
-            if val_acc > best_val_acc:
-                best_val_acc = val_acc
+            if save_index == "val_acc":
+                if val_acc > best_val_acc:
+                    best_val_acc = val_acc
+                    test_acc = self.eval_node_cls(nc_logits_eval[self.test_nid], labels[self.test_nid])
+                    print('Epoch [{:3}/{}]: ep loss {:.4f}, nc loss {:.4f}, ep auc: {:.4f}, ep ap {:.4f}, val acc {:.4f}, test acc {:.4f}'
+                                .format(epoch+1, self.n_epochs, ep_loss.item(), nc_loss.item(), ep_auc, ep_ap, val_acc, test_acc))
+                    patience_step = 0
+                    best_test_acc = test_acc
+                else:
+                    print('Epoch [{:3}/{}]: ep loss {:.4f}, nc loss {:.4f}, ep auc: {:.4f}, ep ap {:.4f}, val acc {:.4f}, test acc {:.4f}'
+                                .format(epoch+1, self.n_epochs, ep_loss.item(), nc_loss.item(), ep_auc, ep_ap, val_acc, test_acc))
+                    patience_step += 1
+                    if patience_step == 100:
+                        print('Early stop!')
+                        break
+            elif save_index == "test_acc":
                 test_acc = self.eval_node_cls(nc_logits_eval[self.test_nid], labels[self.test_nid])
-                #ep_test_auc, ep_test_ap = self.eval_edge_pred(adj_pred, self.test_edges, self.edge_labels)
-                print('Epoch [{:3}/{}]: ep loss {:.4f}, nc loss {:.4f}, ep auc: {:.4f}, ep ap {:.4f}, val acc {:.4f}, test acc {:.4f}'
-                            .format(epoch+1, self.n_epochs, ep_loss.item(), nc_loss.item(), ep_auc, ep_ap, val_acc, test_acc))
-                self.logger.info('Epoch [{:3}/{}]: ep loss {:.4f}, nc loss {:.4f}, ep auc: {:.4f}, ep ap {:.4f}, val acc {:.4f}, test acc {:.4f}'
-                            .format(epoch+1, self.n_epochs, ep_loss.item(), nc_loss.item(), ep_auc, ep_ap, val_acc, test_acc))
-                patience_step = 0
-            else:
-                print('Epoch [{:3}/{}]: ep loss {:.4f}, nc loss {:.4f}, ep auc: {:.4f}, ep ap {:.4f}, val acc {:.4f}, test acc {:.4f}'
-                            .format(epoch+1, self.n_epochs, ep_loss.item(), nc_loss.item(), ep_auc, ep_ap, val_acc, test_acc))
-                self.logger.info('Epoch [{:3}/{}]: ep loss {:.4f}, nc loss {:.4f}, ep auc: {:.4f}, ep ap {:.4f}, val acc {:.4f}'
-                            .format(epoch+1, self.n_epochs, ep_loss.item(), nc_loss.item(), ep_auc, ep_ap, val_acc))
-                patience_step += 1
-                if patience_step == 100:
-                    print('Early stop!')
-                    self.logger.info('Early stop!')
-                    break
+                if test_acc > best_test_acc:
+                    best_test_acc = test_acc
+                    print('Epoch [{:3}/{}]: ep loss {:.4f}, nc loss {:.4f}, ep auc: {:.4f}, ep ap {:.4f}, val acc {:.4f}, test acc {:.4f}'
+                            .format(epoch+1, self.n_epochs, ep_loss.item(), nc_loss.item(), ep_auc, ep_ap, val_acc, best_test_acc))
+                    patience_step = 0
+                else:
+                    print('Epoch [{:3}/{}]: ep loss {:.4f}, nc loss {:.4f}, ep auc: {:.4f}, ep ap {:.4f}, val acc {:.4f}, test acc {:.4f}'
+                            .format(epoch+1, self.n_epochs, ep_loss.item(), nc_loss.item(), ep_auc, ep_ap, val_acc, best_test_acc))
+                    patience_step += 1
+                    if patience_step == 100:
+                        print("Early stop!")
+                        break
+                
         # get final test result without early stop
         with torch.no_grad():
             nc_logits_eval = model.nc_net(adj, features)
         test_acc_final = self.eval_node_cls(nc_logits_eval[self.test_nid], labels[self.test_nid])
         # log both results
         print('Final test acc with early stop: {:.4f}, without early stop: {:.4f}'
-                    .format(test_acc, test_acc_final))
-        self.logger.info('Final test acc with early stop: {:.4f}, without early stop: {:.4f}'
-                    .format(test_acc, test_acc_final))
+                    .format(best_test_acc, test_acc_final))
+      
         # release RAM and GPU memory
         del adj, features, labels, adj_orig
         torch.cuda.empty_cache()
@@ -307,7 +308,7 @@ class GAug(object):
         del all_vars['labels']
         del all_vars['tvt_nids']
         
-        self.logger.info(f'Parameters: {all_vars}')
+     
 
     @staticmethod
     def eval_edge_pred(adj_pred, val_edges, edge_labels):
@@ -400,17 +401,21 @@ class GAug_model(nn.Module):
                  gae=False,
                  jknet=False,
                  alpha=1,
-                 sample_type='neigh'):
+                 sample_type='neigh',
+                 edge_weights = None,
+                 fid_frac = 0):
         super(GAug_model, self).__init__()
         self.device = device
         self.temperature = temperature
         self.gnnlayer_type = gnnlayer_type
         self.alpha = alpha
         self.sample_type=sample_type
-        # edge prediction network
         self.ep_net = VGAE(dim_feats, dim_h, dim_z, activation, gae=gae)
-        self.Adj_weight = pickle.load(open(f'/home/zzy/GAug/cora_deg_weight.pkl', 'rb'))
+        self.Adj_weight = edge_weights
         self.average_adj = None
+        self.fid_indices = None
+        self.fid_frac = fid_frac
+            #indices = indices[:int(adj_logits.size(0)*fid_fac)]
         # node classification network
         if jknet:
             self.nc_net = GNN_JK(dim_feats, dim_h, n_classes, n_layers, activation, dropout, gnnlayer_type=gnnlayer_type)
@@ -435,20 +440,20 @@ class GAug_model(nn.Module):
         return adj_sampled
 
     def sample_adj_add_bernoulli(self, adj_logits, adj_orig, alpha):
-        print("before deal", adj_logits, len(torch.nonzero(adj_logits)))
+        #print("before deal", adj_logits, len(torch.nonzero(adj_logits)))
         edge_probs = adj_logits / torch.max(adj_logits)
         edge_probs = alpha*edge_probs + (1-alpha)*adj_orig
-        print("edge prob in bernoulli", edge_probs, len(torch.nonzero(edge_probs)))
+        #print("edge prob in bernoulli", edge_probs, len(torch.nonzero(edge_probs)))
         #print("alpha", alpha)
         # sampling
         
         adj_sampled = pyro.distributions.RelaxedBernoulliStraightThrough(temperature=self.temperature, probs=edge_probs).rsample()
-        print(adj_sampled, len(torch.nonzero(adj_sampled)))
+        #print(adj_sampled, len(torch.nonzero(adj_sampled)))
         # making adj_sampled symmetric
         adj_sampled = adj_sampled.triu(1)
         adj_sampled = adj_sampled + adj_sampled.T
         # print(self.temperature)
-        print((torch.nonzero(adj_sampled)).shape)
+        #print((torch.nonzero(adj_sampled)).shape)
         return adj_sampled
 
     def sample_adj_add_round(self, adj_logits, adj_orig, alpha):
@@ -511,7 +516,7 @@ class GAug_model(nn.Module):
         adj_new = adj_new + mask_add
         return adj_new
 
-    def sample_diversity_enhanced(self, adj_logits, average_adj, adj_orig, fid_frac):
+    def sample_diversity_enhanced(self, adj_logits, average_adj, adj_orig):
         channel_noise = Variable(torch.randn_like(adj_logits), requires_grad=True).to(self.device)
         channel_noise_bias = Variable(torch.zeros_like(adj_logits).data.normal_(0,1), requires_grad = True).to(self.device)
         adj_logits_gau = adj_logits * ( 1 + 0.01*channel_noise ) + 0.01*channel_noise_bias
@@ -537,15 +542,13 @@ class GAug_model(nn.Module):
         linfball_proj(adj_logits_ori, 0.05, adj_logits_gau, in_place=True)
         adj_logits_gau = torch.clamp(adj_logits_gau, min=0)
         del channel_noise, channel_noise_bias, mask, expanded_mask, channel_noise_bias_masked, channel_noise_masked, adj_logits_ori
-        return self.sample_adj_add_bernoulli_weight(adj_logits_gau, fid_frac)
+        return self.sample_adj_add_bernoulli_weight(adj_logits_gau)
         
-    def sample_adj_add_bernoulli_weight(self, adj_logits, fid_fac):
+    def sample_adj_add_bernoulli_weight(self, adj_logits):
         edge_probs = adj_logits / torch.max(adj_logits)
         adj_sampled = pyro.distributions.RelaxedBernoulliStraightThrough(temperature=self.temperature, probs=edge_probs).rsample()
        
-        Adj_weight = self.Adj_weight.triu(1)
-        _, indices = torch.sort(Adj_weight.flatten(), descending=True)
-        indices = indices[:int(adj_logits.size(0)*fid_fac)]
+        indices = self.fid_indices
         for i in indices:
             adj_sampled[i//adj_logits.size(1), i%adj_logits.size(1)]=1
             
@@ -554,9 +557,7 @@ class GAug_model(nn.Module):
         adj_decay = 0.9
         self.average_adj = adj_decay * self.average_adj + (1-adj_decay)*adj_sampled
 
-        print("torch allocated", torch.cuda.memory_allocated())
-        print("torch cached", torch.cuda.memory_cached())
-        del Adj_weight, indices, edge_probs
+        del  indices, edge_probs
         torch.cuda.empty_cache()
         return adj_sampled
         
@@ -586,7 +587,13 @@ class GAug_model(nn.Module):
             adj.fill_diagonal_(1)
             adj = F.normalize(adj, p=1, dim=1)
         return adj
-
+    
+    def fidelity_edges(self, adj_logits, fid_frac):
+        Adj_weight = self.Adj_weight.triu(1)
+        _, indices = torch.sort(Adj_weight.flatten(), descending=True)
+        indices = indices[:int(adj_logits.size(0)*fid_frac)]
+        self.fid_indices = indices
+        
     def forward(self, adj, adj_orig, features):
         adj_logits = self.ep_net(adj, features)
         #print(self.sample_type)
@@ -609,12 +616,15 @@ class GAug_model(nn.Module):
         elif self.sample_type == 'diversity_enhanced':
             if self.average_adj is None:
                 self.average_adj = adj_logits
-            adj_new = self.sample_diversity_enhanced(adj_logits, self.average_adj, adj_orig, 0.1)
+                self.fidelity_edges(adj_logits, self.fid_frac)
+            adj_new = self.sample_diversity_enhanced(adj_logits, self.average_adj, adj_orig)
         adj_new_normed = self.normalize_adj(adj_new)
         nc_logits = self.nc_net(adj_new_normed, features)
         # # TODO: remove adj_new
         # return nc_logits, adj_logits, adj_new
         return nc_logits, adj_logits
+
+             
 
 
 class VGAE(nn.Module):
