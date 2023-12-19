@@ -26,14 +26,15 @@ if __name__ == "__main__":
     
     tvt_nids = pickle.load(open(f'/home/zzy/GAug/data/graphs/{args.dataset}_tvt_nids.pkl', 'rb'))
     adj_orig = pickle.load(open(f'/home/zzy/GAug/data/graphs/{args.dataset}_adj.pkl', 'rb'))
-    features = pickle.load(open(f'/home/zzy/GAug/data/graphs/{args.dataset}_features.pkl', 'rb'))
-    labels = pickle.load(open(f'/home/zzy/GAug/data/graphs/{args.dataset}_labels.pkl', 'rb'))
+    features = pickle.load(open(f'/home/zzy/GAug/data/graphs/{args.dataset}_features.pkl', 'rb')).cpu()
+    labels = pickle.load(open(f'/home/zzy/GAug/data/graphs/{args.dataset}_labels.pkl', 'rb')).cpu()
     if sp.issparse(features):
         features = torch.FloatTensor(features.toarray())
     edge_weights = pickle.load(open(f'/home/zzy/GAug/{args.dataset}_deg_weight.pkl', 'rb'))
     params_all = json.load(open('/home/zzy/GAug/best_parameters.json', 'r'))
-    params = params_all['GAugO'][args.dataset][args.gnn]
-
+    #params = params_all['GAugO'][args.dataset][args.gnn]
+    params = params_all.get('GAugO', {}).get(args.dataset, params_all.get('GAugO', {}).get('cora', {}))
+    
     gnn = args.gnn
     layer_type = args.gnn
     jk = False
