@@ -13,7 +13,7 @@ from torch.autograd import Variable
 from .utils import *
 
 class GAug(object):
-    def __init__(self, adj_matrix, features, labels, tvt_nids, cuda=-1, hidden_size=128, emb_size=32, n_layers=1, epochs=200, seed=-1, lr=1e-2, weight_decay=5e-4, dropout=0.5, gae=False, beta=0.5, temperature=0.2, log=True, name='debug', warmup=3, gnnlayer_type='gcn', jknet=False, alpha=1, sample_type='add_sample', edge_weights=None, fid_frac=0, feat_norm='row'):
+    def __init__(self, adj_matrix, features, labels, tvt_nids, cuda=-1, hidden_size=128, emb_size=32, n_layers=1, epochs=200, seed=-1, lr=1e-2, weight_decay=5e-4, dropout=0.5, gae=False, beta=0.5, temperature=0.2, log=True, name='debug', warmup=3, gnnlayer_type='gcn', jknet=False, alpha=1, sample_type='add_sample', edge_weights=None, fid_div='None', feat_norm='row', patience=100):
         self.lr = lr
         self.weight_decay = weight_decay
         self.n_epochs = epochs
@@ -35,6 +35,8 @@ class GAug(object):
             torch.cuda.manual_seed_all(seed)
         # load data
         self.load_data(adj_matrix, features, labels, tvt_nids, gnnlayer_type)
+        self.fid_div = fid_div
+        self.patience = patience
         # setup the model
         self.model = GAug_model(self.features.size(1),
                                 hidden_size,
@@ -50,8 +52,7 @@ class GAug(object):
                                 jknet=jknet,
                                 alpha=alpha,
                                 sample_type=sample_type,
-                                edge_weights=edge_weights,
-                                fid_frac=fid_frac)
+                                edge_weights=edge_weights)
 
     def load_data(self, adj_matrix, features, labels, tvt_nids, gnnlayer_type):
         """ preprocess data """
@@ -60,6 +61,7 @@ class GAug(object):
             self.features = features
         else:
             self.features = torch.FloatTensor(features)
+            print("features", self.features, self.features.shape)
         # normalize feature matrix if needed
         if self.feat_norm == 'row':
             self.features = F.normalize(self.features, p=1, dim=1)
@@ -237,7 +239,7 @@ class GAug(object):
                 optims.update_lr(0, ep_lr_schedule[epoch])
 
             model.train()
-            nc_logits, adj_logits = model(adj_norm, adj_orig, features)
+            nc_logits, adj_logits = model(adj_norm, adj_orig, features, self.fid_div)
             # nc_logits, adj_logits, adj_new = model(adj_norm, adj_orig, features)
             # # TODO: tmp saving for experiments, delete the following line and adj_new later
             # pickle.dump(adj_new, open(f'results/gaug_adjs/ep{epoch+1}.pkl', 'wb'))
@@ -268,7 +270,7 @@ class GAug(object):
                     print('Epoch [{:3}/{}]: ep loss {:.4f}, nc loss {:.4f}, ep auc: {:.4f}, ep ap {:.4f}, val acc {:.4f}, test acc {:.4f}'
                                 .format(epoch+1, self.n_epochs, ep_loss.item(), nc_loss.item(), ep_auc, ep_ap, val_acc, test_acc))
                     patience_step += 1
-                    if patience_step == 100:
+                    if patience_step == self.patience:
                         print('Early stop!')
                         break
             elif save_index == "test_acc":
@@ -282,7 +284,7 @@ class GAug(object):
                     print('Epoch [{:3}/{}]: ep loss {:.4f}, nc loss {:.4f}, ep auc: {:.4f}, ep ap {:.4f}, val acc {:.4f}, test acc {:.4f}'
                             .format(epoch+1, self.n_epochs, ep_loss.item(), nc_loss.item(), ep_auc, ep_ap, val_acc, best_test_acc))
                     patience_step += 1
-                    if patience_step == 100:
+                    if patience_step == self.patience:
                         print("Early stop!")
                         break
                 
@@ -401,8 +403,7 @@ class GAug_model(nn.Module):
                  jknet=False,
                  alpha=1,
                  sample_type='neigh',
-                 edge_weights = None,
-                 fid_frac = 0):
+                 edge_weights = None):
         super(GAug_model, self).__init__()
         self.device = device
         self.temperature = temperature
@@ -413,7 +414,10 @@ class GAug_model(nn.Module):
         self.Adj_weight = edge_weights
         self.average_adj = None
         self.fid_indices = None
-        self.fid_frac = fid_frac
+        
+        # self.fid_frac = fid_div['fidF']
+        # self.kl_score = fid_div['kl_score']
+        
             #indices = indices[:int(adj_logits.size(0)*fid_fac)]
         # node classification network
         if jknet:
@@ -515,62 +519,69 @@ class GAug_model(nn.Module):
         adj_new = adj_new + mask_add
         return adj_new
 
-    def sample_diversity_enhanced(self, adj_logits, average_adj, adj_orig):
+    def sample_diversity_enhanced(self, adj_logits, average_adj, adj_orig, noise_mask = False, contains_ori = False, score='bi', linfball_arg=1, average_adj_fac=0.9):
         channel_noise = Variable(torch.randn_like(adj_logits), requires_grad=True).to(self.device)
         channel_noise_bias = Variable(torch.zeros_like(adj_logits).data.normal_(0,1), requires_grad = True).to(self.device)
         adj_logits_gau = adj_logits * ( 1 + 0.01*channel_noise ) + 0.01*channel_noise_bias
         adj_logits_gau = adj_logits_gau.triu(1).view(-1)
         adj_average = average_adj.triu(1).view(-1)
-        adj_orig = adj_orig.triu(1).view(-1)
+        adj_orig_triu = adj_orig.triu(1).view(-1)
         kl_divergence_gau = F.kl_div(torch.log(adj_logits_gau), adj_average, reduction="sum")
-        kl_divergence_ori = F.kl_div(torch.log(adj_logits_gau), adj_orig, reduction="sum")
-        Score = kl_divergence_gau-kl_divergence_ori
+        if score=='bi':
+            kl_divergence_ori = F.kl_div(torch.log(adj_logits_gau), adj_orig_triu, reduction="sum")
+            Score = kl_divergence_gau-kl_divergence_ori
+        else:
+            Score = kl_divergence_gau
         (channel_noise_grad, channel_noise_bias_grad) = torch.autograd.grad(Score, [channel_noise, channel_noise_bias])
 
         channel_noise.data.add_(0.1 * torch.sign(channel_noise_grad))
         channel_noise_bias.data.add_(0.1 * torch.sign(channel_noise_bias_grad))
-        del channel_noise_grad, channel_noise_bias_grad, kl_divergence_gau, kl_divergence_ori, Score, adj_logits_gau, adj_average
-
+        del channel_noise_grad, channel_noise_bias_grad, kl_divergence_gau, kl_divergence_ori, Score, adj_logits_gau, adj_average, adj_orig_triu
+        torch.cuda.empty_cache()
+        
         adj_logits_ori = adj_logits
         #print("Orignial", adj_logits_ori, len(torch.nonzero(adj_logits_ori)), torch.max(adj_logits_ori), torch.min(adj_logits_ori))
-        mask = (average_adj!=0)
-        expanded_mask = mask.expand_as(adj_logits)
-        channel_noise_masked = channel_noise * expanded_mask.float()
-        channel_noise_bias_masked = channel_noise_bias * expanded_mask.float()
-        adj_logits_gau = adj_logits*( 1 + 0.01*channel_noise_masked) + 0.01*channel_noise_bias_masked
-        linfball_proj(adj_logits_ori, 0.05, adj_logits_gau, in_place=True)
+        if noise_mask:
+            mask = (average_adj!=0)
+            expanded_mask = mask.expand_as(adj_logits)
+            channel_noise_masked = channel_noise * expanded_mask.float()
+            channel_noise_bias_masked = channel_noise_bias * expanded_mask.float()
+            adj_logits_gau = adj_logits*( 1 + 0.01*channel_noise_masked) + 0.01*channel_noise_bias_masked
+        else:
+            adj_logits_gau = adj_logits*(1+0.01*channel_noise) + 0.01 * (channel_noise_bias)
+        print("difference", torch.max(adj_logits_gau-adj_logits_ori))
+        linfball_proj(adj_logits_ori, linfball_arg, adj_logits_gau, in_place=True)
         adj_logits_gau = torch.clamp(adj_logits_gau, min=0)
         del channel_noise, channel_noise_bias, mask, expanded_mask, channel_noise_bias_masked, channel_noise_masked, adj_logits_ori
-        return self.sample_adj_add_bernoulli_weight(adj_logits_gau)
+        torch.cuda.empty_cache()
+        if contains_ori:
+            return self.sample_adj_add_bernoulli_weight(adj_logits_gau, average_adj_fac=average_adj_fac, adj_orig=adj_orig)
+        else:
+            return self.sample_adj_add_bernoulli_weight(adj_logits_gau,average_adj_fac=average_adj_fac)
         
-    def sample_adj_add_bernoulli_weight(self, adj_logits):
+    def sample_adj_add_bernoulli_weight(self, adj_logits, average_adj_fac=0.9, adj_orig = None):
+        
         edge_probs = adj_logits / torch.max(adj_logits)
+        if adj_orig is not None:
+            mask = (adj_orig!=0)
+            expanded_mask = mask.expand_as(adj_orig)
+            adj_logits = adj_logits * expanded_mask.float()
         adj_sampled = pyro.distributions.RelaxedBernoulliStraightThrough(temperature=self.temperature, probs=edge_probs).rsample()
        
-        indices = self.fid_indices
-        for i in indices:
+        for i in self.fid_indices:
             adj_sampled[i//adj_logits.size(1), i%adj_logits.size(1)]=1
             
         adj_sampled = adj_sampled.triu(1)
         adj_sampled = adj_sampled + adj_sampled.T
-        adj_decay = 0.9
-        self.average_adj = adj_decay * self.average_adj + (1-adj_decay)*adj_sampled
+        adj_decay = average_adj_fac
+        with torch.no_grad():
+            self.average_adj = adj_decay * self.average_adj + (1-adj_decay)*adj_sampled
 
-        del  indices, edge_probs
+        del  edge_probs
         torch.cuda.empty_cache()
         return adj_sampled
         
-        '''
-        # with torch.no_grad():
-        #     adj_logits_gau_tmp_sampled = pyro.distributions.RelaxedBernoulliStraightThrough(temperature=self.temperature, probs=adj_logits_gau_tmp).rsample()
-        # adj_logits_gau_lap = normalized_laplacian(adj_logits_gau_tmp_sampled)
-        # adj_average_lap = normalized_laplacian(average_adj)
-        # led_logits = laplacian_energy_distribution(features, adj_logits_gau_lap)
-        # led_orig = laplacian_energy_distribution(features, adj_average_lap)
-        # print(led_logits)
-        '''
-        
-        
+           
     def normalize_adj(self, adj):
         if self.gnnlayer_type == 'gcn':
             # adj = adj + torch.diag(torch.ones(adj.size(0))).to(self.device)
@@ -593,8 +604,12 @@ class GAug_model(nn.Module):
         indices = indices[:int(adj_logits.size(0)*fid_frac)]
         self.fid_indices = indices
         
-    def forward(self, adj, adj_orig, features):
+    def forward(self, adj, adj_orig, features, fid_div):
         adj_logits = self.ep_net(adj, features)
+        if self.average_adj is None:
+            self.average_adj = adj_logits
+            fid_frac = fid_div['fidF']
+            self.fidelity_edges(adj_logits, fid_frac)
         #print(self.sample_type)
         #print("alpha", self.alpha)
         if self.sample_type == 'rand':
@@ -612,15 +627,16 @@ class GAug_model(nn.Module):
                 adj_new = self.sample_adj(adj_logits)
             else:
                 adj_new = self.sample_adj_add_bernoulli(adj_logits, adj_orig, self.alpha)
-        elif self.sample_type == 'diversity_enhanced':
-            if self.average_adj is None:
-                self.average_adj = adj_logits
-                self.fidelity_edges(adj_logits, self.fid_frac)
-            adj_new = self.sample_diversity_enhanced(adj_logits, self.average_adj, adj_orig)
+        elif self.sample_type == 'diversity_enhanced': #our method
+            adj_new = self.sample_diversity_enhanced(adj_logits, self.average_adj, adj_orig, noise_mask = fid_div['gau_mask'], contains_ori = fid_div['sample_ori_mask'],
+                                                     score = fid_div['kl_score'], linfball_arg = float(fid_div['linfball']), average_adj_fac = float(fid_div['average_adj_fac'])) 
+        elif self.sample_type == 'add_sample_fid': #GAugO but use fid instead of original
+                adj_new = self.sample_adj_add_bernoulli_weight(adj_logits, average_adj_fac = fid_div['average_adj_fac'])
+                
         adj_new_normed = self.normalize_adj(adj_new)
         nc_logits = self.nc_net(adj_new_normed, features)
-        # # TODO: remove adj_new
-        # return nc_logits, adj_logits, adj_new
+        del adj_new_normed, adj_new
+        torch.cuda.empty_cache()
         return nc_logits, adj_logits
 
              

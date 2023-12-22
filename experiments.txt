@@ -16,24 +16,93 @@
         - Micro F1: 0.836933, std: 0.005921 frac:0.3
         - Micro F1: 0.836100, std: 0.003467 frac:0.3
         - Micro F1: 0.836933, std: 0.003974 frac:0.3 
+        - Micro F1: 0.834767, std: 0.004500 frac:0.3 Max is 0.845000, min is 0.823000 lineball:5 nomask
         - Micro F1: 0.838133, std: 0.004440 frac 0.3 max: 0.85000, min: 0.830000 
-    
+        - Micro F1: 0.836900, std: 0.004735 frac:0.3 Max is 0.847000, min is 0.828000 lineball:1 score:gau
+        - Micro F1: 0.836300, std: 0.005478 frac:0.3 Max is 0.850000, min is 0.826000
+        - Micro F1: 0.833267, std: 0.007071 frac:0.3 Max is 0.848000, min is 0.815000 lineball:5 score:gau gau:0.1
+        - Micro F1: 0.838067, std: 0.005329 frac:0.0 Max is 0.851000, min is 0.825000 lineball:5 score:gau fid:0 noori_nograd
+        - Micro F1: 0.837567, std: 0.004695 frac:0.0 Max is 0.847000, min is 0.828000 lineball:5 score:gau fid:0 noori_grad
+
+        - GAT
+            - Micro F1: 0.805700, std: 0.013184 frac:0.3 Max is 0.830000, min is 0.775000
+            - Micro F1: 0.808933, std: 0.008937 frac:0.1 Max is 0.832000, min is 0.782000 lineball:5 score:gau fid:0 noori_nograd
+
+- PubMed:
+    Original:
+        - Micro F1: 0.794900, std: 0.006872(val_acc)
+        - Micro F1: 0.795533, std: 0.008233, Max is 0.816000, min is 0.778000 (test_acc)
+    Ours:
+        - Micro F1: 0.788967, std: 0.008912 frac:0.1 Max is 0.819000, min is 0.775000 lineball:5 score:Gau
+        - Micro F1: 0.795267, std: 0.006314 frac:0.6 Max is 0.807000, min is 0.784000 
 
 - Citeseer:
     Original: 
         - Micro F1:0.737633, std: 0.005930 (directly save best test acc)
+        - Micro F1: 0.736867, std: 0.005239, Max is 0.750000, min is 0.728000 sample_type:add_sample 
+        - Micro F1: 0.738000, std: 0.005820 train_GAugO seed 7
         - Micro F1:0.727800, std: 0.005856 (with best val to get corresponding acc)
         - Mirco F1:0.728000, std: 0.008489 (same as above)
+
     
     Ours:
         - Micro F1: 0.734033, std: 0.007026 frac:0 (test acc)
+        - Micro F1: 0.723300, std: 0.007963 frac:0 max 0.73800 min 0.707000 lineball:0.5
         - Micro F1: 0.726667, std: 0.009271 frac:0.1 (val acc)
-        - 
+        - Micro F1: 0.736400, std: 0.005174 frac:0.1 Max is 0.748000, min is 0.716000
+        - Micro F1: 0.741400, std: 0.004977 frac:0.3 Max is 0.750000, min is 0.729000
+        - Micro F1: 0.742500, std: 0.004610 frac:0.3 Max is 0.749000, min is 0.725000 lineball:1 nomask
+        - Micro F1: 0.742533, std: 0.005084 frac:0.3 Max is 0.754000, min is 0.727000 lineball:1 nomask
+        - Micro F1: 0.743533, std: 0.004241 frac:0.3 Max is 0.752000, min is 0.736000 
+        - Micro F1: 0.743767, std: 0.004470 frac:0.3 Max is 0.751000, min is 0.730000 lineball:1 nomask
+        - Micro F1: 0.744100, std: 0.004636 frac:0.3 Max is 0.751000, min is 0.733000 lineball:1 nomask
+        - Micro F1: 0.741700, std: 0.006198 frac:0.3 Max is 0.751000, min is 0.726000 lineball:5 mask sample_mask seed 7
+        - Micro F1: 0.743067, std: 0.004604 frac:0.3 Max is 0.752000, min is 0.737000 lineball:1 nomask seed 7 
+        - Micro F1: 0.746933, std: 0.003119 frac:1 Max is 0.754000, min is 0.740000 cn --gpu 0 --fidF 1 --kl_score bi --gau_mask false --linfball 1 --sample_ori_mask False --save_index test_acc --seed 7 
+    - Variants
+        - Micro F1: 0.741800, std: 0.005828, Max is 0.752000, min is 0.732000 original_with_fid seed 7
+        
 
 - PPI
     Original:
-        - Micro F1: 0.424700, std: 0.005137 
+        - Micro F1: 0.424700, std: 0.005137 (val_acc)
+        - Micro F1: 0.466329, std: 0.004149 Max is 0.476272, min is 0.459160 (test_acc)
+    Ours:
+        - 
 
+- Airport USA
+    Original:
+        - Micro F1: 0.591156, std: 0.006087 (val acc)
+        - report: 61.4+-0.9
+    
+    Ours:
+        - Micro F1: 0.585874, std: 0.006483 frac:0.1 Max is 0.605042, min is 0.572629
+        - Micro F1: 0.585114, std: 0.004965 frac:0.1 Max is 0.594238, min is 0.577431 lineball:5 score:gau
+        - Micro F1: 0.585594, std: 0.004366 frac:0.0 Max is 0.597839, min is 0.579832 
+        - Micro F1: 0.583914, std: 0.003928 frac:0.1 Max is 0.590636, min is 0.576230 lineball:5 gau:0.1 scoreGau
+        - Micro F1: 0.585354, std: 0.004401 frac:0.3 Max is 0.591837, min is 0.576230
+        - Micro F1: 0.585234, std: 0.004270 frac:0.3 Max is 0.593037, min is 0.578631 lineball:5
+        - Micro F1: 0.585394, std: 0.003674 frac:0.5 Max is 0.591837, min is 0.578631 lineball:5 gauFac:0.1
+        - Micro F1: 0.584714, std: 0.004502 frac:0.5 Max is 0.597839, min is 0.575030
+        - Micro F1: 0.585194, std: 0.004839 frac:0.5 Max is 0.599040, min is 0.577431 lineball:5 gauFac:0.1 scoreGau epoch300patience150
+        
+
+
+
+    Explainer Loss: 19895.910607218742-> 177.14051806926727 
+
+- BlogC 
+    Original:
+        Nan
+
+- Flickr
+    Original:
+        - Micro F1: 0.620322, std: 0.001531
+    Ours:
+        - 
+    
+    Explainer Loss: 235776.406819 -> 1772.0102398 模型acc:0.4910428
+        
 # Todo:
     - 跑其他数据集， 其他网络
     - 测试no weight change 的效果（frac=0
@@ -42,3 +111,25 @@
     - 参数调整实验
     - 画图思考流程
     - optuna？自动寻找最优参数
+
+# 变量和可调整尝试的值
+- Paser变量
+    - fidF 
+    - Score: kl_divergence_gau/kl_divergence_gau-kl_divergence_ori
+    - channel noise mask or not
+    - linfball 
+    - contains ori or not 
+    - gaussian factor
+    - seed 
+    - average_adj fac 
+- 可尝试调整的值
+    - weight
+
+    #fid_div = {
+        'fidF':args.fidF,                           #fidility factor 
+        'kl_score':args.score,                      #kl_score ; bi for gau-ori, solo for gau only
+        'gau_mask':args.gau_mask,                   #True for mask channel ori 
+        'linfball':args.linfball,                   #linfball value for noise 
+        'sample_ori_mask':args.sample_ori_mask      #True for mask ori when sample
+        'average_adj_fac':args.average_adj_fac      #fac for slide average
+    }

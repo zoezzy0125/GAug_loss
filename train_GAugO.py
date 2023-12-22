@@ -12,7 +12,13 @@ if __name__ == "__main__":
     parser.add_argument('--dataset', type=str, default='cora')
     parser.add_argument('--gnn', type=str, default='gcn')
     parser.add_argument('--gpu', type=str, default='0')
+    parser.add_argument('-seed','--seed', type=int, default=7)
     args = parser.parse_args()
+    if args.seed > 0:
+            np.random.seed(args.seed)
+            torch.manual_seed(args.seed)
+            torch.cuda.manual_seed_all(args.seed)
+            print("seed",args.seed)
 
     if args.gpu == '-1':
         gpu = -1
@@ -31,8 +37,7 @@ if __name__ == "__main__":
     # Adj_weight = pickle.load(open(f'{args.dataset}_deg_weight.pkl', 'rb'))
     # print("Adj_weight",Adj_weight)
     params_all = json.load(open('best_parameters.json', 'r'))
-    params = params_all['GAugO'][args.dataset][args.gnn]
-
+    params = params_all.get('GAugO', {}).get(args.dataset, params_all.get('GAugO', {}).get('cora', {}))[args.gnn]
     gnn = args.gnn
     layer_type = args.gnn
     jk = False
