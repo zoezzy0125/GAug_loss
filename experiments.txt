@@ -27,6 +27,21 @@
         - GAT
             - Micro F1: 0.805700, std: 0.013184 frac:0.3 Max is 0.830000, min is 0.775000
             - Micro F1: 0.808933, std: 0.008937 frac:0.1 Max is 0.832000, min is 0.782000 lineball:5 score:gau fid:0 noori_nograd
+    
+    - GAugM + Ours (利用GAugM得到的边)
+        - Micro F1: 0.839433, std: 0.003621, Max is 0.847000, min is 0.831000
+            Big Epoch 29/30 dataset is cora_GAugM fid_frac is 0.8
+            Total done! Namespace(average_adj_fac=0.9, dataset='cora_GAugM', 
+            epoch=200, fidF=0.8, gau_mask=True, gnn='gcn', gpu=3, kl_score='solo', 
+            linfball=1.0, patience=150, sample_ori_mask=True, sample_type='diversity_enhanced', 
+            save_index='test_acc', seed=7) 
+        - Micro F1: 0.838767, std: 0.004047, Max is 0.848000, min is 0.831000
+            Big Epoch 29/30 dataset is cora_GAugM fid_frac is 1.0
+            Total done! Namespace(average_adj_fac=0.9, dataset='cora_GAugM', 
+            epoch=200, fidF=1.0, gau_mask=True, gnn='gcn', gpu=3, kl_score='solo', 
+            linfball=1.0, patience=150, sample_ori_mask=True, sample_type='diversity_enhanced', 
+            save_index='test_acc', seed=7)
+
 
 - PubMed:
     Original:
@@ -35,6 +50,12 @@
     Ours:
         - Micro F1: 0.788967, std: 0.008912 frac:0.1 Max is 0.819000, min is 0.775000 lineball:5 score:Gau
         - Micro F1: 0.795267, std: 0.006314 frac:0.6 Max is 0.807000, min is 0.784000 
+        - Micro F1: 0.797000, std: 0.004626, Max is 0.805000, min is 0.787000
+            Namespace(average_adj_fac=0.9, dataset='PubMed', epoch=200, 
+            fidF=0.8, gau_mask=True, gnn='gcn', gpu=1, kl_score='solo', 
+            linfball=1.0, patience=100, sample_ori_mask=True, sample_type='diversity_enhanced', 
+            save_index='test_acc', seed=7)
+
 
 - Citeseer:
     Original: 
@@ -44,7 +65,6 @@
         - Micro F1:0.727800, std: 0.005856 (with best val to get corresponding acc)
         - Mirco F1:0.728000, std: 0.008489 (same as above)
 
-    
     Ours:
         - Micro F1: 0.734033, std: 0.007026 frac:0 (test acc)
         - Micro F1: 0.723300, std: 0.007963 frac:0 max 0.73800 min 0.707000 lineball:0.5
@@ -59,8 +79,15 @@
         - Micro F1: 0.741700, std: 0.006198 frac:0.3 Max is 0.751000, min is 0.726000 lineball:5 mask sample_mask seed 7
         - Micro F1: 0.743067, std: 0.004604 frac:0.3 Max is 0.752000, min is 0.737000 lineball:1 nomask seed 7 
         - Micro F1: 0.746933, std: 0.003119 frac:1 Max is 0.754000, min is 0.740000 cn --gpu 0 --fidF 1 --kl_score bi --gau_mask false --linfball 1 --sample_ori_mask False --save_index test_acc --seed 7 
+    
     - Variants
-        - Micro F1: 0.741800, std: 0.005828, Max is 0.752000, min is 0.732000 original_with_fid seed 7
+        - original_with_fid: Micro F1: 0.741800, std: 0.005828, Max is 0.752000, min is 0.732000 seed 7
+        - GAugM+fidiv Micro F1: 0.725567, std: 0.003062, Max is 0.731000, min is 0.717000
+                Big Epoch 29/30 dataset is citeseer_GAugM fid_frac is 1.0
+                Namespace(average_adj_fac=0.9, dataset='citeseer_GAugM', epoch=200, 
+                fidF=1.0, gau_mask=True, gnn='gcn', gpu=0, kl_score='solo', linfball=1.0, 
+                patience=150, sample_ori_mask=True, sample_type='diversity_enhanced', 
+                save_index='test_acc', seed=7)
         
 
 - PPI
@@ -86,9 +113,6 @@
         - Micro F1: 0.584714, std: 0.004502 frac:0.5 Max is 0.597839, min is 0.575030
         - Micro F1: 0.585194, std: 0.004839 frac:0.5 Max is 0.599040, min is 0.577431 lineball:5 gauFac:0.1 scoreGau epoch300patience150
         
-
-
-
     Explainer Loss: 19895.910607218742-> 177.14051806926727 
 
 - BlogC 
@@ -133,3 +157,21 @@
         'sample_ori_mask':args.sample_ori_mask      #True for mask ori when sample
         'average_adj_fac':args.average_adj_fac      #fac for slide average
     }
+
+# 2023/12/26
+    - 可以用GAugM产生的新边来进行fid_diversity实验
+        - 步骤：
+            1. 先利用vgae_ori->生成对应数据集的logits
+            2. 利用对应logits—> 使用train_GAugM_forfidiv.py, 得到对应的新adj
+            3. 利用新的adj(N*N 0101格式)->输入explainer得到新的weights 
+            4. 利用新的weights—>进行新的GAugO_weight训练； （adj_>sparse）
+                这里需要得到新的tvt_nids（不变）， adj_pkl（logits）, features（logits）, labels（不变） 
+        - cd GAug/vgae_ori python main.py --dataset _____
+        - 将args.dataset_graph_1_logits.pkl 移到data/edge_probabilities; 
+        - args.dataset_features.pkl 改名为args.dataset_GAugM_features.pkl 移到data/graphs
+        - cd GAug python train_GAugM_forfidiv.py  --dataset ____ 得到 args.dataset_GAugM_adj.pkl args.dataset_sparse_GAugM_adj.pkl 
+        - 将args.dataset_GAugM_adj.pkl移到data/graphs, 复制args.dataset_labels/tvt_nids, 改名为args.dataset_GAugM_labels/tvt_nids.pkl 
+        - python train_pge_getWeight_fromFiles.py --dataset args.dataset_GAugM  得到args.dataset_GAugM_deg_weight.pkl 移到deg_weight/ 并改名args.dataset_GAugM
+        - 将args.dataset_GAugM_sparse_adj.pkl 移到data/graphs 改名args.dataset_GAugM_adj.pkl 
+
+    - 补GAugO+diversity的实验

@@ -363,6 +363,7 @@ class GCN(object):
         # data
         features = self.features.to(self.device)
         labels = self.labels.to(self.device)
+        
         # loss function for node classification
         if len(self.labels.size()) == 2:
             nc_criterion = nn.BCEWithLogitsLoss()

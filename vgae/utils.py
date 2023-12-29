@@ -198,7 +198,7 @@ def gen_graphs(args, dl, vgae):
         A_pred = torch.sigmoid(A_pred).detach().cpu()
         r = get_scores(dl.val_edges, dl.val_edges_false, A_pred, dl.adj_label)
         adj_recon = A_pred.numpy()
-        print(adj_recon)
+        #print(adj_recon)
         np.fill_diagonal(adj_recon, 0)
         # np.ndarray
         if args.gae:

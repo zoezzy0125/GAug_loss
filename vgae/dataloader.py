@@ -93,13 +93,13 @@ class DataLoader():
         self.features_orig = normalize(features, norm='l1', axis=1)
 
     def load_data_binary(self, dataset):
-        adj = pickle.load(open(f'{BASE_DIR}/graphs/{dataset}_adj.pkl', 'rb'))
+        adj = pickle.load(open(f'{BASE_DIR}/data/graphs/{dataset}_adj.pkl', 'rb'))
         if adj.diagonal().sum() > 0:
             adj = sp.coo_matrix(adj)
             adj.setdiag(0)
             adj.eliminate_zeros()
             adj = sp.csr_matrix(adj)
-        features = pickle.load(open(f'{BASE_DIR}/graphs/{dataset}_features.pkl', 'rb'))
+        features = pickle.load(open(f'{BASE_DIR}/data/graphs/{dataset}_features.pkl', 'rb'))
         if isinstance(features, torch.Tensor):
             features = features.numpy()
         features = sp.csr_matrix(features)

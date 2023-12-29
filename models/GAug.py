@@ -61,7 +61,7 @@ class GAug(object):
             self.features = features
         else:
             self.features = torch.FloatTensor(features)
-            print("features", self.features, self.features.shape)
+           #print("features", self.features, self.features.shape)
         # normalize feature matrix if needed
         if self.feat_norm == 'row':
             self.features = F.normalize(self.features, p=1, dim=1)
@@ -75,9 +75,11 @@ class GAug(object):
             self.features = F.normalize(self.features, p=1, dim=1)
         # original adj_matrix for training vgae (torch.FloatTensor)
         assert sp.issparse(adj_matrix)
+        #print(adj_matrix)
         if not isinstance(adj_matrix, sp.coo_matrix):
             adj_matrix = sp.coo_matrix(adj_matrix)
         adj_matrix.setdiag(1)
+        
         self.adj_orig = scipysp_to_pytorchsp(adj_matrix).to_dense()
         # normalized adj_matrix used as input for ep_net (torch.sparse.FloatTensor)
         degrees = np.array(adj_matrix.sum(1))
@@ -239,6 +241,7 @@ class GAug(object):
                 optims.update_lr(0, ep_lr_schedule[epoch])
 
             model.train()
+          
             nc_logits, adj_logits = model(adj_norm, adj_orig, features, self.fid_div)
             # nc_logits, adj_logits, adj_new = model(adj_norm, adj_orig, features)
             # # TODO: tmp saving for experiments, delete the following line and adj_new later
@@ -421,6 +424,7 @@ class GAug_model(nn.Module):
             #indices = indices[:int(adj_logits.size(0)*fid_fac)]
         # node classification network
         if jknet:
+            gnnlayer_type='gsage'
             self.nc_net = GNN_JK(dim_feats, dim_h, n_classes, n_layers, activation, dropout, gnnlayer_type=gnnlayer_type)
         else:
             self.nc_net = GNN(dim_feats, dim_h, n_classes, n_layers, activation, dropout, gnnlayer_type=gnnlayer_type)
@@ -530,29 +534,33 @@ class GAug_model(nn.Module):
         if score=='bi':
             kl_divergence_ori = F.kl_div(torch.log(adj_logits_gau), adj_orig_triu, reduction="sum")
             Score = kl_divergence_gau-kl_divergence_ori
+            del kl_divergence_ori
+            torch.cuda.empty_cache()
         else:
             Score = kl_divergence_gau
         (channel_noise_grad, channel_noise_bias_grad) = torch.autograd.grad(Score, [channel_noise, channel_noise_bias])
 
         channel_noise.data.add_(0.1 * torch.sign(channel_noise_grad))
         channel_noise_bias.data.add_(0.1 * torch.sign(channel_noise_bias_grad))
-        del channel_noise_grad, channel_noise_bias_grad, kl_divergence_gau, kl_divergence_ori, Score, adj_logits_gau, adj_average, adj_orig_triu
+        del channel_noise_grad, channel_noise_bias_grad, kl_divergence_gau, Score, adj_logits_gau, adj_average, adj_orig_triu
         torch.cuda.empty_cache()
         
         adj_logits_ori = adj_logits
         #print("Orignial", adj_logits_ori, len(torch.nonzero(adj_logits_ori)), torch.max(adj_logits_ori), torch.min(adj_logits_ori))
         if noise_mask:
+            #print("noise mask")
             mask = (average_adj!=0)
             expanded_mask = mask.expand_as(adj_logits)
             channel_noise_masked = channel_noise * expanded_mask.float()
             channel_noise_bias_masked = channel_noise_bias * expanded_mask.float()
             adj_logits_gau = adj_logits*( 1 + 0.01*channel_noise_masked) + 0.01*channel_noise_bias_masked
         else:
+            #print("noise no")
             adj_logits_gau = adj_logits*(1+0.01*channel_noise) + 0.01 * (channel_noise_bias)
         print("difference", torch.max(adj_logits_gau-adj_logits_ori))
         linfball_proj(adj_logits_ori, linfball_arg, adj_logits_gau, in_place=True)
         adj_logits_gau = torch.clamp(adj_logits_gau, min=0)
-        del channel_noise, channel_noise_bias, mask, expanded_mask, channel_noise_bias_masked, channel_noise_masked, adj_logits_ori
+        del channel_noise, channel_noise_bias, adj_logits_ori
         torch.cuda.empty_cache()
         if contains_ori:
             return self.sample_adj_add_bernoulli_weight(adj_logits_gau, average_adj_fac=average_adj_fac, adj_orig=adj_orig)
@@ -563,6 +571,7 @@ class GAug_model(nn.Module):
         
         edge_probs = adj_logits / torch.max(adj_logits)
         if adj_orig is not None:
+            #print("adj ori mask")
             mask = (adj_orig!=0)
             expanded_mask = mask.expand_as(adj_orig)
             adj_logits = adj_logits * expanded_mask.float()
@@ -598,18 +607,32 @@ class GAug_model(nn.Module):
             adj = F.normalize(adj, p=1, dim=1)
         return adj
     
-    def fidelity_edges(self, adj_logits, fid_frac):
+    def fidelity_edges(self, adj_logits, fid_frac, orig_edge_num):
         Adj_weight = self.Adj_weight.triu(1)
         _, indices = torch.sort(Adj_weight.flatten(), descending=True)
-        indices = indices[:int(adj_logits.size(0)*fid_frac)]
+        indices = indices[:int(orig_edge_num*fid_frac)]
+        self.fid_indices = indices
+    
+    def fid_sim_edges(self, features, fid_frac, orig_edge_num):
+        #print(features, features.shape)
+        normalized_features = torch.nn.functional.normalize(features, p=2, dim=1)
+        similarity_matrix = torch.mm(normalized_features, normalized_features.t())
+        sim_matrix = similarity_matrix.triu(1)
+        _, indices = torch.sort(sim_matrix.flatten(), descending=True)
+        indices = indices[:int(orig_edge_num*fid_frac)]
         self.fid_indices = indices
         
     def forward(self, adj, adj_orig, features, fid_div):
         adj_logits = self.ep_net(adj, features)
-        if self.average_adj is None:
+        orig_edge_num = int((torch.nonzero(adj_orig).size(0) - adj_orig.size(0))/2)
+        if self.sample_type == 'diversity_enhanced' and self.average_adj is None:
             self.average_adj = adj_logits
             fid_frac = fid_div['fidF']
-            self.fidelity_edges(adj_logits, fid_frac)
+            self.fidelity_edges(adj_logits, fid_frac, orig_edge_num)
+        if self.sample_type == 'diversity_enhanced_sim' and self.average_adj is None:
+            self.average_adj = adj_logits
+            fid_frac = fid_div['fidF']
+            self.fid_sim_edges(features, fid_frac, orig_edge_num)
         #print(self.sample_type)
         #print("alpha", self.alpha)
         if self.sample_type == 'rand':
@@ -627,12 +650,12 @@ class GAug_model(nn.Module):
                 adj_new = self.sample_adj(adj_logits)
             else:
                 adj_new = self.sample_adj_add_bernoulli(adj_logits, adj_orig, self.alpha)
-        elif self.sample_type == 'diversity_enhanced': #our method
+        elif self.sample_type == 'diversity_enhanced' or self.sample_type == 'diversity_enhanced_sim': #our method
             adj_new = self.sample_diversity_enhanced(adj_logits, self.average_adj, adj_orig, noise_mask = fid_div['gau_mask'], contains_ori = fid_div['sample_ori_mask'],
                                                      score = fid_div['kl_score'], linfball_arg = float(fid_div['linfball']), average_adj_fac = float(fid_div['average_adj_fac'])) 
         elif self.sample_type == 'add_sample_fid': #GAugO but use fid instead of original
                 adj_new = self.sample_adj_add_bernoulli_weight(adj_logits, average_adj_fac = fid_div['average_adj_fac'])
-                
+            
         adj_new_normed = self.normalize_adj(adj_new)
         nc_logits = self.nc_net(adj_new_normed, features)
         del adj_new_normed, adj_new
