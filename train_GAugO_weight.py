@@ -23,6 +23,7 @@ if __name__ == "__main__":
     parser.add_argument('--average_adj_fac', type=float, default=0.9)
     parser.add_argument('--patience', type=int, default=100)
     parser.add_argument('--epoch', type=int, default=200)
+    parser.add_argument('--big_epoch', type=int, default=30)
     args = parser.parse_args()
 
     print(args, args.sample_ori_mask)
@@ -78,7 +79,7 @@ if __name__ == "__main__":
         n_layers = 3
 
     accs = []
-    total_big_epoch = 30
+    total_big_epoch = args.big_epoch
     for big_epoch in range(total_big_epoch):
         model = GAug(adj_orig, features, labels, tvt_nids, cuda=gpu, epochs=args.epoch,
                      gae=True, alpha=params['alpha'], beta=params['beta'], 
